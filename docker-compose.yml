@@ -1,0 +1,57 @@
+services:
+
+  # ── Fuseki (TDB2 SPARQL Store) ──────────────────────────────
+  fuseki:
+    image: stain/jena-fuseki:latest
+    platform: linux/amd64          # ARM64 Mac은 Rosetta 에뮬레이션
+    container_name: ontologyviewer-fuseki
+    environment:
+      ADMIN_PASSWORD: admin
+      FUSEKI_DATASET_ontology: ontology
+      TDB: 2
+      JVM_ARGS: -Xmx2g
+    volumes:
+      - ./fuseki-data:/fuseki       # 기존 데이터 그대로 사용 (bind mount)
+    ports:
+      - "3030:3030"                 # Fuseki 관리 UI 직접 접근용
+    restart: unless-stopped
+    healthcheck:
+      # stain/jena-fuseki 이미지에는 wget 포함됨
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3030/$$/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── Backend (FastAPI) ────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ontologyviewer-backend
+    environment:
+      FUSEKI_BASE_URL: http://fuseki:3030
+      FUSEKI_ADMIN_USER: admin
+      FUSEKI_ADMIN_PASSWORD: admin
+    depends_on:
+      fuseki:
+        condition: service_healthy  # Fuseki 준비 후 기동
+    ports:
+      - "8000:8000"                 # 개발 중 직접 API 접근용
+    restart: unless-stopped
+
+  # ── Frontend (React → nginx) ─────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ""           # 빌드 시 API base = 빈 문자열 → nginx 프록시 사용
+    container_name: ontologyviewer-frontend
+    ports:
+      - "80:80"                     # 메인 접속 포트
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+# volumes 섹션 불필요 (bind mount 사용)
