@@ -6,3 +6,4 @@ pydantic-settings>=2.0.0
 rdflib>=7.0.0
 owlrl>=6.0.2
 pyshacl>=0.25.0
+python-multipart>=0.0.9
