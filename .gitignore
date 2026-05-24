@@ -7,7 +7,5 @@ venv/
 .pytest_cache/
 node_modules/
 dist/
-fuseki-data/databases/
-fuseki-data/system_files/
-fuseki-data/shiro.ini
+fuseki-data/
 .DS_Store
