@@ -10,6 +10,7 @@ import SparqlEditor from './components/SparqlEditor/SparqlEditor'
 import ReasoningPanel from './components/Reasoning/ReasoningPanel'
 import ShaclPanel from './components/Shacl/ShaclPanel'
 import RulesPanel from './components/Rules/RulesPanel'
+import DatasourcesPanel from './components/Datasources/DatasourcesPanel'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
@@ -70,6 +71,11 @@ const tabItems = [
     key: 'rules',
     label: '⚡ Rules',
     children: <OOIGuard><RulesPanel /></OOIGuard>,
+  },
+  {
+    key: 'datasources',
+    label: '🗄️ Datasources',
+    children: <OOIGuard><DatasourcesPanel /></OOIGuard>,
   },
 ]
 

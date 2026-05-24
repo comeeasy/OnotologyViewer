@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import classes, config, data_properties, datasets, graphs, individuals, namespaces, object_properties, sparql_editor, reasoning, shacl, rules
+from routers import classes, config, data_properties, datasets, graphs, individuals, namespaces, object_properties, sparql_editor, reasoning, shacl, rules, datasources
 
 app = FastAPI(
     title="OntologyViewer API",
@@ -28,3 +28,4 @@ app.include_router(sparql_editor.router)
 app.include_router(reasoning.router)
 app.include_router(shacl.router)
 app.include_router(rules.router)
+app.include_router(datasources.router)
