@@ -1,0 +1,181 @@
+"""TBox — Class CRUD 라우터."""
+
+from urllib.parse import unquote
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
+
+from services.class_ import (
+    create_class,
+    delete_class,
+    get_class_detail,
+    list_classes,
+    update_class,
+)
+
+router = APIRouter(prefix="/api/tbox/classes", tags=["classes"])
+
+
+# ────────────────────────────────────────────────
+# Request / Response models
+# ────────────────────────────────────────────────
+
+class ClassSummary(BaseModel):
+    iri:     str
+    label:   str | None
+    comment: str | None
+
+
+class ClassesResponse(BaseModel):
+    dataset:   str
+    graph:     str
+    namespace: str
+    classes:   list[ClassSummary]
+
+
+class ObjectPropertyRef(BaseModel):
+    iri:   str
+    label: str | None
+    role:  str          # "domain" | "range"
+
+
+class DataPropertyRef(BaseModel):
+    iri:   str
+    label: str | None
+    range: str | None
+
+
+class ClassDetail(BaseModel):
+    iri:               str
+    label:             str | None
+    comment:           str | None
+    super_classes:     list[str]
+    sub_classes:       list[str]
+    object_properties: list[ObjectPropertyRef]
+    data_properties:   list[DataPropertyRef]
+    individual_count:  int
+
+
+class CreateClassBody(BaseModel):
+    dataset:   str
+    graph:     str
+    namespace: str
+    label:     str
+    comment:   str
+
+
+class CreateClassResponse(BaseModel):
+    iri: str
+
+
+class UpdateClassBody(BaseModel):
+    dataset:  str
+    graph:    str
+    label:    str | None = None
+    comment:  str | None = None
+
+
+# ────────────────────────────────────────────────
+# Endpoints
+# ────────────────────────────────────────────────
+
+@router.get("", response_model=ClassesResponse)
+def get_classes(
+    dataset:   str = Query(..., description="Fuseki dataset 명"),
+    graph:     str = Query(..., description="Named Graph IRI"),
+    namespace: str = Query(..., description="Namespace base IRI"),
+):
+    """OOI 범위 내 모든 Class 목록을 반환한다."""
+    try:
+        classes = list_classes(dataset, graph, namespace)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return ClassesResponse(
+        dataset=dataset,
+        graph=graph,
+        namespace=namespace,
+        classes=[ClassSummary(**c) for c in classes],
+    )
+
+
+@router.post("", response_model=CreateClassResponse, status_code=201)
+def post_class(body: CreateClassBody):
+    """Class를 생성하고 신규 IRI를 반환한다."""
+    try:
+        iri = create_class(
+            dataset=body.dataset,
+            graph=body.graph,
+            namespace=body.namespace,
+            label=body.label,
+            comment=body.comment,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return CreateClassResponse(iri=iri)
+
+
+@router.get("/{iri:path}", response_model=ClassDetail)
+def get_class(
+    iri:     str,
+    dataset: str = Query(..., description="Fuseki dataset 명"),
+    graph:   str = Query(..., description="Named Graph IRI"),
+):
+    """
+    Class 상세 정보를 반환한다.
+
+    - superclass / subclass 계층
+    - 관련 Object Property (domain / range)
+    - 관련 Data Property
+    - Individual 수
+    """
+    class_iri = unquote(iri)
+    try:
+        detail = get_class_detail(dataset, graph, class_iri)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"Class not found: {class_iri}")
+
+    return ClassDetail(**detail)
+
+
+@router.patch("/{iri:path}", status_code=204)
+def patch_class(iri: str, body: UpdateClassBody):
+    """label / comment 중 제공된 필드만 수정한다."""
+    class_iri = unquote(iri)
+    try:
+        update_class(
+            dataset=body.dataset,
+            graph=body.graph,
+            class_iri=class_iri,
+            label=body.label,
+            comment=body.comment,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+
+
+@router.delete("/{iri:path}", status_code=204)
+def delete_class_endpoint(
+    iri:            str,
+    dataset:        str = Query(...),
+    graph:          str = Query(...),
+    on_individual:  str = Query("delete", description="delete | migrate (migrate는 v02)"),
+):
+    """
+    Class를 삭제한다 (3단계).
+
+    1. 소속 Individual 처리 (on_individual=delete)
+    2. domain/range 참조 제거
+    3. Class 선언 삭제
+    """
+    class_iri = unquote(iri)
+    try:
+        delete_class(dataset, graph, class_iri, on_individual)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
