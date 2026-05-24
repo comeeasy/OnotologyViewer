@@ -11,6 +11,12 @@ export interface GraphDetail {
 export const checkHealth = () =>
   apiFetch<{ status: string }>('GET', '/api/health')
 
+export const createDataset = async (name: string): Promise<{ name: string }> =>
+  apiFetch<{ name: string }>('POST', '/api/datasets', { name })
+
+export const deleteDataset = async (name: string): Promise<void> =>
+  apiFetch<void>('DELETE', `/api/datasets/${encodeURIComponent(name)}`)
+
 export const getDatasets = async (): Promise<Dataset[]> => {
   const res = await apiFetch<{ datasets: Dataset[] }>('GET', '/api/datasets')
   return res.datasets

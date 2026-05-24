@@ -8,8 +8,8 @@ import {
   DeleteOutlined, LoadingOutlined, PlusOutlined, SettingOutlined,
 } from '@ant-design/icons'
 import {
-  checkHealth, createGraph, deleteGraph, getGraphDetail, patchGraph,
-  getDatasets, getGraphs, getNamespacesInGraph,
+  checkHealth, createDataset, createGraph, deleteDataset, deleteGraph,
+  getGraphDetail, patchGraph, getDatasets, getGraphs, getNamespacesInGraph,
 } from '../../api/navigator'
 import type { GraphDetail } from '../../api/navigator'
 import { useOOI } from '../../context/OOIContext'
@@ -31,6 +31,43 @@ const OOINavigator: React.FC = () => {
   const [selDataset, setSelDataset] = useState<string | null>(null)
   const [selGraph, setSelGraph] = useState<string | null>(null)
   const [selNs, setSelNs] = useState<string | null>(null)
+
+  // Dataset 생성/삭제
+  const [dsModalOpen, setDsModalOpen] = useState(false)
+  const [dsForm] = Form.useForm()
+  const [dsCreating, setDsCreating] = useState(false)
+
+  const handleCreateDataset = async () => {
+    const { name } = await dsForm.validateFields()
+    setDsCreating(true)
+    try {
+      await createDataset(name.trim())
+      message.success(`Dataset '${name}'이(가) 생성되었습니다.`)
+      setDsModalOpen(false)
+      dsForm.resetFields()
+      const updated = await getDatasets()
+      setDatasets(updated)
+      setSelDataset(name.trim())
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setDsCreating(false)
+    }
+  }
+
+  const handleDeleteDataset = async () => {
+    if (!selDataset) return
+    try {
+      await deleteDataset(selDataset)
+      message.success(`Dataset '${selDataset}'이(가) 삭제되었습니다.`)
+      setSelDataset(null); setSelGraph(null); setSelNs(null)
+      const updated = await getDatasets()
+      setDatasets(updated)
+      if (dataset === selDataset) clear()
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    }
+  }
 
   // Graph 생성 Modal
   const [graphModalOpen, setGraphModalOpen] = useState(false)
@@ -169,9 +206,27 @@ const OOINavigator: React.FC = () => {
 
       {/* Dataset */}
       <div>
-        <Text type="secondary" style={{ fontSize: 12 }}>Dataset</Text>
+        <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 4 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>Dataset</Text>
+          <Space size={4}>
+            <Tooltip title="Dataset 생성">
+              <Button size="small" type="text" icon={<PlusOutlined />}
+                onClick={() => { dsForm.resetFields(); setDsModalOpen(true) }} />
+            </Tooltip>
+            <Tooltip title="선택한 Dataset 삭제">
+              <Popconfirm
+                title={`Dataset '${selDataset}'과 모든 데이터를 삭제합니다.`}
+                onConfirm={handleDeleteDataset}
+                okText="삭제" okButtonProps={{ danger: true }}
+                disabled={!selDataset}
+              >
+                <Button size="small" type="text" danger icon={<DeleteOutlined />} disabled={!selDataset} />
+              </Popconfirm>
+            </Tooltip>
+          </Space>
+        </Space>
         <Select
-          style={{ width: '100%', marginTop: 4 }}
+          style={{ width: '100%' }}
           placeholder="선택"
           value={selDataset}
           onChange={(v) => { setSelDataset(v); setSelGraph(null); setSelNs(null) }}
@@ -333,6 +388,30 @@ const OOINavigator: React.FC = () => {
         onClose={() => setConfigModalOpen(false)}
         onSaved={recheckHealth}
       />
+
+      {/* Dataset 생성 Modal */}
+      <Modal
+        title="Dataset 생성"
+        open={dsModalOpen}
+        onOk={handleCreateDataset}
+        onCancel={() => setDsModalOpen(false)}
+        okText="생성"
+        confirmLoading={dsCreating}
+        destroyOnClose
+      >
+        <Form form={dsForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="name"
+            label="Dataset 이름"
+            rules={[
+              { required: true, message: '이름을 입력하세요.' },
+              { pattern: /^[A-Za-z0-9_\-]+$/, message: '영문·숫자·하이픈·밑줄만 허용됩니다.' },
+            ]}
+          >
+            <Input placeholder="예: my-ontology" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* Named Graph 생성 Modal */}
       <Modal
