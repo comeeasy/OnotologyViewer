@@ -8,9 +8,10 @@ import {
   DeleteOutlined, LoadingOutlined, PlusOutlined, SettingOutlined,
 } from '@ant-design/icons'
 import {
-  checkHealth, createGraph, deleteGraph,
+  checkHealth, createGraph, deleteGraph, getGraphDetail, patchGraph,
   getDatasets, getGraphs, getNamespacesInGraph,
 } from '../../api/navigator'
+import type { GraphDetail } from '../../api/navigator'
 import { useOOI } from '../../context/OOIContext'
 import type { Dataset, Namespace } from '../../types/ontology'
 import FusekiConfigModal from './FusekiConfigModal'
@@ -35,6 +36,11 @@ const OOINavigator: React.FC = () => {
   const [graphModalOpen, setGraphModalOpen] = useState(false)
   const [graphForm] = Form.useForm()
   const [graphCreating, setGraphCreating] = useState(false)
+
+  // Graph 상세 / 수정
+  const [graphDetail, setGraphDetail] = useState<GraphDetail | null>(null)
+  const [editGraphOpen, setEditGraphOpen] = useState(false)
+  const [editGraphForm] = Form.useForm()
 
   // Fuseki 연결 설정 Modal
   const [configModalOpen, setConfigModalOpen] = useState(false)
@@ -62,12 +68,13 @@ const OOINavigator: React.FC = () => {
     loadGraphs(selDataset)
   }, [selDataset])
 
-  // ── graph 선택 시 namespaces 로드 ──
+  // ── graph 선택 시 namespaces + detail 로드 ──
   useEffect(() => {
-    if (!selDataset || !selGraph) { setNamespaces([]); setSelNs(null); return }
-    getNamespacesInGraph(selDataset, selGraph)
-      .then(setNamespaces)
-      .catch(() => setNamespaces([]))
+    if (!selDataset || !selGraph) {
+      setNamespaces([]); setSelNs(null); setGraphDetail(null); return
+    }
+    getNamespacesInGraph(selDataset, selGraph).then(setNamespaces).catch(() => setNamespaces([]))
+    getGraphDetail(selDataset, selGraph).then(setGraphDetail).catch(() => setGraphDetail(null))
   }, [selDataset, selGraph])
 
   const customNamespaces = namespaces.filter((n) => n.type === 'custom')
@@ -93,6 +100,31 @@ const OOINavigator: React.FC = () => {
       message.error((e as Error).message)
     } finally {
       setGraphCreating(false)
+    }
+  }
+
+  // ── Graph 수정 ──
+  const openEditGraph = () => {
+    editGraphForm.setFieldsValue({
+      label: graphDetail?.label ?? '',
+      comment: graphDetail?.comment ?? '',
+    })
+    setEditGraphOpen(true)
+  }
+
+  const handleEditGraph = async () => {
+    if (!selDataset || !selGraph) return
+    const values = await editGraphForm.validateFields()
+    try {
+      const updated = await patchGraph(selDataset, selGraph, {
+        label: values.label || undefined,
+        comment: values.comment || undefined,
+      })
+      setGraphDetail(updated)
+      setEditGraphOpen(false)
+      message.success('Named Graph 정보가 수정되었습니다.')
+    } catch (e: unknown) {
+      message.error((e as Error).message)
     }
   }
 
@@ -150,18 +182,23 @@ const OOINavigator: React.FC = () => {
         />
       </div>
 
-      {/* Graph + 생성/삭제 버튼 */}
+      {/* Graph + 생성/수정/삭제 버튼 */}
       <div>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 4 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>Named Graph</Text>
           <Space size={4}>
             <Tooltip title="Named Graph 생성">
               <Button
-                size="small"
-                type="text"
-                icon={<PlusOutlined />}
+                size="small" type="text" icon={<PlusOutlined />}
                 disabled={!selDataset}
                 onClick={() => { graphForm.resetFields(); setGraphModalOpen(true) }}
+              />
+            </Tooltip>
+            <Tooltip title="Graph 정보 수정">
+              <Button
+                size="small" type="text" icon={<SettingOutlined />}
+                disabled={!selGraph}
+                onClick={openEditGraph}
               />
             </Tooltip>
             <Tooltip title="선택한 Graph 삭제">
@@ -172,10 +209,7 @@ const OOINavigator: React.FC = () => {
                 disabled={!selGraph}
               >
                 <Button
-                  size="small"
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
+                  size="small" type="text" danger icon={<DeleteOutlined />}
                   disabled={!selGraph}
                 />
               </Popconfirm>
@@ -190,6 +224,18 @@ const OOINavigator: React.FC = () => {
           onChange={(v) => { setSelGraph(v); setSelNs(null) }}
           options={graphs.map((g) => ({ label: shortIRI(g), value: g, title: g }))}
         />
+        {graphDetail && (
+          <div style={{ marginTop: 4 }}>
+            {graphDetail.label && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                📌 {graphDetail.label}
+              </Text>
+            )}
+            <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+              트리플 수: {graphDetail.triple_count.toLocaleString()}개
+            </Text>
+          </div>
+        )}
       </div>
 
       {/* Namespace */}
@@ -258,6 +304,29 @@ const OOINavigator: React.FC = () => {
           showIcon
         />
       )}
+
+      {/* Named Graph 수정 Modal */}
+      <Modal
+        title="Named Graph 정보 수정"
+        open={editGraphOpen}
+        onOk={handleEditGraph}
+        onCancel={() => setEditGraphOpen(false)}
+        okText="저장"
+        destroyOnClose
+      >
+        <Form form={editGraphForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="label"
+            label="Label"
+            rules={[{ required: true, message: 'Label을 입력하세요.' }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item name="comment" label="Comment">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <FusekiConfigModal
         open={configModalOpen}

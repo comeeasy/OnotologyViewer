@@ -1,6 +1,13 @@
 import { apiFetch } from './client'
 import type { Dataset, Namespace } from '../types/ontology'
 
+export interface GraphDetail {
+  graph:        string
+  label:        string | null
+  comment:      string | null
+  triple_count: number
+}
+
 export const checkHealth = () =>
   apiFetch<{ status: string }>('GET', '/api/health')
 
@@ -14,6 +21,11 @@ export const getGraphs = async (ds: string): Promise<string[]> => {
   return res.graphs
 }
 
+export const getGraphDetail = async (ds: string, graph: string): Promise<GraphDetail> => {
+  const p = new URLSearchParams({ graph })
+  return apiFetch<GraphDetail>('GET', `/api/datasets/${ds}/graphs/detail?${p}`)
+}
+
 export const createGraph = async (
   ds: string,
   graph: string,
@@ -25,6 +37,13 @@ export const createGraph = async (
   })
   return res.graph
 }
+
+export const patchGraph = async (
+  ds: string,
+  graph: string,
+  patch: { label?: string; comment?: string },
+): Promise<GraphDetail> =>
+  apiFetch<GraphDetail>('PATCH', `/api/datasets/${ds}/graphs`, { graph, ...patch })
 
 export const deleteGraph = async (ds: string, graph: string): Promise<void> => {
   const p = new URLSearchParams({ graph })
