@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import classes, data_properties, datasets, graphs, individuals, namespaces, object_properties
+from routers import classes, config, data_properties, datasets, graphs, individuals, namespaces, object_properties
 
 app = FastAPI(
     title="OntologyViewer API",
@@ -16,6 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(config.router)
 app.include_router(datasets.router)
 app.include_router(graphs.router)
 app.include_router(namespaces.router)

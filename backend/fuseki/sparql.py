@@ -1,21 +1,22 @@
 """Fuseki SPARQL query / update 실행기."""
 
 from SPARQLWrapper import JSON, POST, SPARQLWrapper
-from config import settings
+import config_state
 
 
 def _sparql_endpoint(dataset: str) -> str:
-    return f"{settings.fuseki_base_url}/{dataset}/sparql"
+    return f"{config_state.base_url()}/{dataset}/sparql"
 
 
 def _update_endpoint(dataset: str) -> str:
-    return f"{settings.fuseki_base_url}/{dataset}/update"
+    return f"{config_state.base_url()}/{dataset}/update"
 
 
 def _set_auth(sw: SPARQLWrapper) -> None:
-    """Admin 인증 정보를 SPARQLWrapper 에 적용한다."""
+    """현재 config_state 인증 정보를 SPARQLWrapper 에 적용한다."""
+    user, pw = config_state.auth()
     sw.setHTTPAuth("BASIC")
-    sw.setCredentials(settings.fuseki_admin_user, settings.fuseki_admin_password)
+    sw.setCredentials(user, pw)
 
 
 def _flatten(bindings: list[dict]) -> list[dict]:

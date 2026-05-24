@@ -5,7 +5,7 @@ import {
 } from 'antd'
 import {
   CheckCircleOutlined, CloseCircleOutlined,
-  DeleteOutlined, LoadingOutlined, PlusOutlined,
+  DeleteOutlined, LoadingOutlined, PlusOutlined, SettingOutlined,
 } from '@ant-design/icons'
 import {
   checkHealth, createGraph, deleteGraph,
@@ -13,6 +13,7 @@ import {
 } from '../../api/navigator'
 import { useOOI } from '../../context/OOIContext'
 import type { Dataset, Namespace } from '../../types/ontology'
+import FusekiConfigModal from './FusekiConfigModal'
 
 const { Text } = Typography
 
@@ -35,12 +36,20 @@ const OOINavigator: React.FC = () => {
   const [graphForm] = Form.useForm()
   const [graphCreating, setGraphCreating] = useState(false)
 
+  // Fuseki 연결 설정 Modal
+  const [configModalOpen, setConfigModalOpen] = useState(false)
+
+  const recheckHealth = () => {
+    setHealth('checking')
+    checkHealth()
+      .then(() => { setHealth('ok'); getDatasets().then(setDatasets).catch(() => {}) })
+      .catch(() => setHealth('error'))
+  }
+
   // ── 초기 health + datasets ──
   useEffect(() => {
-    checkHealth()
-      .then(() => setHealth('ok'))
-      .catch(() => setHealth('error'))
-    getDatasets().then(setDatasets).catch(() => {})
+    recheckHealth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── dataset 선택 시 graphs 로드 ──
@@ -108,10 +117,20 @@ const OOINavigator: React.FC = () => {
   return (
     <Space direction="vertical" style={{ width: '100%', padding: '12px 16px' }}>
       {/* 연결 상태 */}
-      <Space>
-        {health === 'checking' && <><LoadingOutlined /><Text type="secondary"> 연결 확인 중…</Text></>}
-        {health === 'ok'       && <><CheckCircleOutlined style={{ color: '#52c41a' }} /><Text style={{ color: '#52c41a' }}> Fuseki 연결됨</Text></>}
-        {health === 'error'    && <><CloseCircleOutlined style={{ color: '#ff4d4f' }} /><Text type="danger"> 연결 실패</Text></>}
+      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+        <Space>
+          {health === 'checking' && <><LoadingOutlined /><Text type="secondary"> 연결 확인 중…</Text></>}
+          {health === 'ok'       && <><CheckCircleOutlined style={{ color: '#52c41a' }} /><Text style={{ color: '#52c41a' }}> Fuseki 연결됨</Text></>}
+          {health === 'error'    && <><CloseCircleOutlined style={{ color: '#ff4d4f' }} /><Text type="danger"> 연결 실패</Text></>}
+        </Space>
+        <Tooltip title="Fuseki 연결 설정">
+          <Button
+            size="small"
+            type="text"
+            icon={<SettingOutlined />}
+            onClick={() => setConfigModalOpen(true)}
+          />
+        </Tooltip>
       </Space>
 
       <Divider style={{ margin: '8px 0' }} />
@@ -228,10 +247,23 @@ const OOINavigator: React.FC = () => {
         <Alert
           type="error"
           message="Fuseki에 연결할 수 없습니다."
-          description="백엔드 서버 및 Fuseki 컨테이너 상태를 확인하세요."
+          description={
+            <Space direction="vertical" size={4}>
+              <span>백엔드 서버 및 Fuseki 컨테이너 상태를 확인하세요.</span>
+              <Button size="small" icon={<SettingOutlined />} onClick={() => setConfigModalOpen(true)}>
+                연결 설정 변경
+              </Button>
+            </Space>
+          }
           showIcon
         />
       )}
+
+      <FusekiConfigModal
+        open={configModalOpen}
+        onClose={() => setConfigModalOpen(false)}
+        onSaved={recheckHealth}
+      />
 
       {/* Named Graph 생성 Modal */}
       <Modal
