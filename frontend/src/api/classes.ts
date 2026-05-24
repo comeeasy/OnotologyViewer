@@ -1,0 +1,43 @@
+import { apiFetch, encodeIRI } from './client'
+import type { ClassSummary, ClassDetail } from '../types/ontology'
+
+export const listClasses = async (
+  ds: string, graph: string, ns: string,
+): Promise<ClassSummary[]> => {
+  const p = new URLSearchParams({ dataset: ds, graph, namespace: ns })
+  const res = await apiFetch<{ classes: ClassSummary[] }>('GET', `/api/tbox/classes?${p}`)
+  return res.classes
+}
+
+export const createClass = async (
+  ds: string, graph: string, ns: string, label: string, comment: string,
+): Promise<string> => {
+  const res = await apiFetch<{ iri: string }>('POST', '/api/tbox/classes', {
+    dataset: ds, graph, namespace: ns, label, comment,
+  })
+  return res.iri
+}
+
+export const getClass = async (
+  ds: string, graph: string, iri: string,
+): Promise<ClassDetail> => {
+  const p = new URLSearchParams({ dataset: ds, graph })
+  return apiFetch<ClassDetail>('GET', `/api/tbox/classes/${encodeIRI(iri)}?${p}`)
+}
+
+export const updateClass = async (
+  ds: string, graph: string, iri: string,
+  patch: { label?: string; comment?: string },
+): Promise<void> => {
+  await apiFetch<void>('PATCH', `/api/tbox/classes/${encodeIRI(iri)}`, {
+    dataset: ds, graph, ...patch,
+  })
+}
+
+export const deleteClass = async (
+  ds: string, graph: string, iri: string,
+  onIndividual: 'delete' = 'delete',
+): Promise<void> => {
+  const p = new URLSearchParams({ dataset: ds, graph, on_individual: onIndividual })
+  await apiFetch<void>('DELETE', `/api/tbox/classes/${encodeIRI(iri)}?${p}`)
+}
