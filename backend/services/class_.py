@@ -41,7 +41,7 @@ SELECT ?class ?label ?comment WHERE {{
     ?class a owl:Class .
     OPTIONAL {{ ?class rdfs:label ?label }}
     OPTIONAL {{ ?class rdfs:comment ?comment }}
-    FILTER(STRSTARTS(str(?class), "{namespace}"))
+    FILTER({ns_filter})
   }}
 }}
 """
@@ -221,11 +221,21 @@ DELETE DATA {{
 # 공개 함수
 # ────────────────────────────────────────────────
 
-def list_classes(dataset: str, graph: str, namespace: str) -> list[dict]:
-    """OOI 범위 내 Class 목록 반환."""
+def _ns_filter(namespaces: list[str]) -> str:
+    """SPARQL FILTER 조건 생성: 하나 이상의 namespace STRSTARTS OR 조건."""
+    conditions = [f'STRSTARTS(str(?class), "{ns}")' for ns in namespaces]
+    return " || ".join(conditions)
+
+
+def list_classes(dataset: str, graph: str, namespace: str | list[str]) -> list[dict]:
+    """OOI 범위 내 Class 목록 반환. namespace는 단일 str 또는 str 목록."""
     _validate_iri(graph)
-    _validate_iri(namespace)
-    rows = sparql_query(dataset, _Q_LIST.format(graph=graph, namespace=namespace))
+    ns_list = [namespace] if isinstance(namespace, str) else list(namespace)
+    if not ns_list:
+        raise ValueError("namespace는 하나 이상 제공해야 합니다.")
+    for ns in ns_list:
+        _validate_iri(ns)
+    rows = sparql_query(dataset, _Q_LIST.format(graph=graph, ns_filter=_ns_filter(ns_list)))
     return [
         {
             "iri":     r["class"],

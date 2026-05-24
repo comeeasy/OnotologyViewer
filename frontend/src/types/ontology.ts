@@ -14,8 +14,11 @@ export interface Namespace {
 export interface OOIState {
   dataset: string | null
   graph: string | null
+  /** 하위 호환: 첫 번째 namespace (또는 null) */
   namespace: string | null
-  setOOI: (dataset: string, graph: string, namespace: string) => void
+  /** v02-I: 선택된 namespace 배열 */
+  namespaces: string[]
+  setOOI: (dataset: string, graph: string, namespaces: string[]) => void
   clear: () => void
 }
 

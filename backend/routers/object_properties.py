@@ -90,16 +90,19 @@ class UpdateObjectPropertyBody(BaseModel):
 
 @router.get("", response_model=ObjectPropertiesResponse)
 def get_object_properties(
-    dataset:   str = Query(...),
-    graph:     str = Query(...),
-    namespace: str = Query(...),
+    dataset:   str       = Query(...),
+    graph:     str       = Query(...),
+    namespace: list[str] = Query(...),
 ):
+    ns_list = [ns for ns in namespace if ns.strip()]
+    if not ns_list:
+        raise HTTPException(422, "namespace는 하나 이상 유효한 값을 제공해야 합니다.")
     try:
-        props = list_object_properties(dataset, graph, namespace)
+        props = list_object_properties(dataset, graph, ns_list)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return ObjectPropertiesResponse(
-        dataset=dataset, graph=graph, namespace=namespace,
+        dataset=dataset, graph=graph, namespace=ns_list[0],
         object_properties=[ObjectPropertySummary(**p) for p in props],
     )
 

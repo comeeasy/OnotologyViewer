@@ -20,7 +20,7 @@ SELECT DISTINCT ?ind ?label ?class WHERE {{
     ?ind  a      ?class .
     ?class a     owl:Class .
     FILTER(isIRI(?ind))
-    FILTER(STRSTARTS(str(?ind), "{namespace}"))
+    FILTER({ns_filter})
     OPTIONAL {{ ?ind rdfs:label ?label }}
     {class_filter}
   }}
@@ -142,20 +142,29 @@ def _datatype_iri(xsd_short: str) -> str:
 # 공개 함수
 # ────────────────────────────────────────────────
 
+def _ns_filter(namespaces: list[str]) -> str:
+    return " || ".join(f'STRSTARTS(str(?ind), "{ns}")' for ns in namespaces)
+
+
 def list_individuals(
     dataset: str,
     graph: str,
-    namespace: str,
+    namespace: str | list[str],
     class_iri: str | None = None,
 ) -> list[dict]:
-    _validate_iri(graph); _validate_iri(namespace)
+    _validate_iri(graph)
+    ns_list = [namespace] if isinstance(namespace, str) else list(namespace)
+    if not ns_list:
+        raise ValueError("namespace는 하나 이상 제공해야 합니다.")
+    for ns in ns_list:
+        _validate_iri(ns)
     if class_iri:
         _validate_iri(class_iri)
         class_filter = f'FILTER(?class = <{class_iri}>)'
     else:
         class_filter = ""
     rows = sparql_query(dataset, _Q_LIST.format(
-        graph=graph, namespace=namespace, class_filter=class_filter
+        graph=graph, ns_filter=_ns_filter(ns_list), class_filter=class_filter,
     ))
     return [
         {"iri": r["ind"], "label": r.get("label"), "class_iri": r["class"]}
@@ -294,3 +303,136 @@ def delete_individual(dataset: str, graph: str, ind_iri: str) -> None:
     _validate_iri(graph); _validate_iri(ind_iri)
     sparql_update(dataset, _U_DEL_INCOMING.format(graph=graph, ind_iri=ind_iri))
     sparql_update(dataset, _U_DEL_OUTGOING.format(graph=graph, ind_iri=ind_iri))
+
+
+# ── v02-E: Class 마이그레이션 ────────────────────────────────────────────
+
+_Q_IND_CLASS = """
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+SELECT ?class WHERE {{
+  GRAPH <{graph}> {{
+    <{ind_iri}> rdf:type ?class .
+    ?class a owl:Class .
+  }}
+}} LIMIT 1
+"""
+
+_Q_CLASS_EXISTS = """
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+ASK {{ GRAPH <{graph}> {{ <{class_iri}> a owl:Class . }} }}
+"""
+
+_Q_INCOMPATIBLE_PROPS = """
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+SELECT DISTINCT ?prop WHERE {{
+  GRAPH <{graph}> {{
+    <{ind_iri}> ?prop ?val .
+    FILTER(?prop NOT IN (
+      <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>,
+      <http://www.w3.org/2000/01/rdf-schema#label>,
+      <http://www.w3.org/2000/01/rdf-schema#comment>
+    ))
+    ?prop rdfs:domain <{old_class}> .
+    FILTER NOT EXISTS {{
+      ?prop rdfs:domain <{new_class}> .
+    }}
+  }}
+}}
+"""
+
+_U_CHANGE_CLASS = """
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+DELETE {{ GRAPH <{graph}> {{ <{ind_iri}> rdf:type <{old_class}> }} }}
+INSERT {{ GRAPH <{graph}> {{ <{ind_iri}> rdf:type <{new_class}> }} }}
+WHERE  {{ GRAPH <{graph}> {{ <{ind_iri}> rdf:type <{old_class}> }} }}
+"""
+
+_U_DEL_PROP_VALUES = """
+DELETE {{ GRAPH <{graph}> {{ <{ind_iri}> <{prop_iri}> ?v }} }}
+WHERE  {{ GRAPH <{graph}> {{ <{ind_iri}> <{prop_iri}> ?v }} }}
+"""
+
+
+def _class_exists(dataset: str, graph: str, class_iri: str) -> bool:
+    from SPARQLWrapper import JSON, SPARQLWrapper
+    import config_state
+    sw = SPARQLWrapper(f"{config_state.base_url()}/{dataset}/sparql")
+    user, pw = config_state.auth()
+    sw.setHTTPAuth("BASIC"); sw.setCredentials(user, pw)
+    sw.setQuery(_Q_CLASS_EXISTS.format(graph=graph, class_iri=class_iri))
+    sw.setReturnFormat(JSON)
+    res = sw.query().convert()
+    return bool(res.get("boolean", False))
+
+
+def get_incompatible_properties(
+    dataset: str, graph: str, ind_iri: str,
+    old_class: str, new_class: str,
+) -> list[str]:
+    """Individual이 사용하는 property 중 new_class에 도메인 없는 것들 반환."""
+    rows = sparql_query(dataset, _Q_INCOMPATIBLE_PROPS.format(
+        graph=graph, ind_iri=ind_iri,
+        old_class=old_class, new_class=new_class,
+    ))
+    return [r["prop"] for r in rows]
+
+
+def migrate_individual_class(
+    dataset: str,
+    graph: str,
+    ind_iri: str,
+    new_class_iri: str,
+    incompatible_props: str,  # "keep" | "delete"
+) -> dict:
+    """
+    Individual의 rdf:type을 new_class_iri로 변경한다.
+
+    incompatible_props:
+        "keep"   — 비호환 property 값 보존 (OWL 비준수 가능)
+        "delete" — 비호환 property 값 삭제
+
+    Returns:
+        {"old_class_iri": ..., "new_class_iri": ..., "deleted_properties": [...]}
+
+    Raises:
+        KeyError: Individual 또는 Class가 존재하지 않음 (→ 404)
+        ValueError: 잘못된 IRI (→ 422)
+    """
+    _validate_iri(graph); _validate_iri(ind_iri); _validate_iri(new_class_iri)
+
+    # Individual 존재 확인
+    detail = get_individual_detail(dataset, graph, ind_iri)
+    if detail is None:
+        raise KeyError(f"Individual not found: {ind_iri}")
+
+    old_class = detail["class_iri"]
+
+    # 새 Class 존재 확인
+    if not _class_exists(dataset, graph, new_class_iri):
+        raise KeyError(f"Class not found: {new_class_iri}")
+
+    # 비호환 property 찾기
+    incompat = get_incompatible_properties(dataset, graph, ind_iri, old_class, new_class_iri)
+
+    # 비호환 property 삭제 (delete 옵션)
+    deleted = []
+    if incompatible_props == "delete":
+        for prop in incompat:
+            sparql_update(dataset, _U_DEL_PROP_VALUES.format(
+                graph=graph, ind_iri=ind_iri, prop_iri=prop,
+            ))
+            deleted.append(prop)
+
+    # rdf:type 교체
+    sparql_update(dataset, _U_CHANGE_CLASS.format(
+        graph=graph, ind_iri=ind_iri,
+        old_class=old_class, new_class=new_class_iri,
+    ))
+
+    return {
+        "old_class_iri": old_class,
+        "new_class_iri": new_class_iri,
+        "deleted_properties": deleted,
+    }

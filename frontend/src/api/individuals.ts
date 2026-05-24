@@ -2,9 +2,11 @@ import { apiFetch, encodeIRI } from './client'
 import type { IndividualSummary, IndividualDetail } from '../types/ontology'
 
 export const listIndividuals = async (
-  ds: string, graph: string, ns: string, classIri?: string,
+  ds: string, graph: string, ns: string | string[], classIri?: string,
 ): Promise<IndividualSummary[]> => {
-  const p = new URLSearchParams({ dataset: ds, graph, namespace: ns })
+  const p = new URLSearchParams({ dataset: ds, graph })
+  const nsList = Array.isArray(ns) ? ns : [ns]
+  nsList.forEach((n) => p.append('namespace', n))
   if (classIri) p.set('class_iri', classIri)
   const res = await apiFetch<{ individuals: IndividualSummary[] }>(
     'GET', `/api/abox/individuals?${p}`,
@@ -56,3 +58,35 @@ export const deleteIndividual = async (
   const p = new URLSearchParams({ dataset: ds, graph })
   await apiFetch<void>('DELETE', `/api/abox/individuals/${encodeIRI(iri)}?${p}`)
 }
+
+// ── v02-E: Class 마이그레이션 ────────────────────────────────────────────
+
+export interface MigratePreviewResponse {
+  individual_iri: string
+  current_class_iri: string
+  new_class_iri: string
+  incompatible_properties: string[]
+}
+
+export interface MigrateClassResponse {
+  old_class_iri: string
+  new_class_iri: string
+  deleted_properties: string[]
+}
+
+export const previewClassMigrate = async (
+  ds: string, graph: string, iri: string, new_class_iri: string,
+): Promise<MigratePreviewResponse> => {
+  const p = new URLSearchParams({ dataset: ds, graph, new_class_iri })
+  return apiFetch<MigratePreviewResponse>(
+    'GET', `/api/abox/individuals/${encodeIRI(iri)}/class-migrate-preview?${p}`,
+  )
+}
+
+export const migrateIndividualClass = async (
+  ds: string, graph: string, iri: string,
+  new_class_iri: string, incompatible_props: 'keep' | 'delete',
+): Promise<MigrateClassResponse> =>
+  apiFetch<MigrateClassResponse>('PATCH', `/api/abox/individuals/${encodeIRI(iri)}/class`, {
+    dataset: ds, graph, new_class_iri, incompatible_props,
+  })

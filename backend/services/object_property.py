@@ -35,7 +35,7 @@ SELECT ?prop ?label ?domain ?range WHERE {{
     OPTIONAL {{ ?prop rdfs:label  ?label }}
     OPTIONAL {{ ?prop rdfs:domain ?domain }}
     OPTIONAL {{ ?prop rdfs:range  ?range }}
-    FILTER(STRSTARTS(str(?prop), "{namespace}"))
+    FILTER({ns_filter})
   }}
 }}
 """
@@ -181,9 +181,18 @@ def _char_triples(prop_iri: str, characteristics: list[str]) -> str:
 # 공개 함수
 # ────────────────────────────────────────────────
 
-def list_object_properties(dataset: str, graph: str, namespace: str) -> list[dict]:
-    _validate_iri(graph); _validate_iri(namespace)
-    rows = sparql_query(dataset, _Q_LIST.format(graph=graph, namespace=namespace))
+def _ns_filter(namespaces: list[str]) -> str:
+    return " || ".join(f'STRSTARTS(str(?prop), "{ns}")' for ns in namespaces)
+
+
+def list_object_properties(dataset: str, graph: str, namespace: str | list[str]) -> list[dict]:
+    _validate_iri(graph)
+    ns_list = [namespace] if isinstance(namespace, str) else list(namespace)
+    if not ns_list:
+        raise ValueError("namespace는 하나 이상 제공해야 합니다.")
+    for ns in ns_list:
+        _validate_iri(ns)
+    rows = sparql_query(dataset, _Q_LIST.format(graph=graph, ns_filter=_ns_filter(ns_list)))
     return [
         {
             "iri":    r["prop"],

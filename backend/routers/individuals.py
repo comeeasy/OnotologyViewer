@@ -3,13 +3,15 @@
 from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from services.individual import (
     create_individual,
     delete_individual,
     get_individual_detail,
+    get_incompatible_properties,
     list_individuals,
+    migrate_individual_class,
     update_individual,
 )
 
@@ -95,23 +97,60 @@ class UpdateIndividualBody(BaseModel):
     object_property_updates:  list[ObjectPropertyUpdate] = []
 
 
+class MigrateClassBody(BaseModel):
+    dataset:            str
+    graph:              str
+    new_class_iri:      str
+    incompatible_props: str = "keep"   # "keep" | "delete"
+
+    @field_validator("new_class_iri")
+    @classmethod
+    def must_be_http(cls, v: str) -> str:
+        if not v.startswith("http://") and not v.startswith("https://"):
+            raise ValueError("new_class_iri must start with http:// or https://")
+        return v
+
+    @field_validator("incompatible_props")
+    @classmethod
+    def must_be_valid_option(cls, v: str) -> str:
+        if v not in ("keep", "delete"):
+            raise ValueError("incompatible_props must be 'keep' or 'delete'")
+        return v
+
+
+class MigrateClassResponse(BaseModel):
+    old_class_iri:       str
+    new_class_iri:       str
+    deleted_properties:  list[str]
+
+
+class MigratePreviewResponse(BaseModel):
+    individual_iri:          str
+    current_class_iri:       str
+    new_class_iri:           str
+    incompatible_properties: list[str]
+
+
 # ────────────────────────────────────────────────
 # Endpoints
 # ────────────────────────────────────────────────
 
 @router.get("", response_model=IndividualsResponse)
 def get_individuals(
-    dataset:   str = Query(...),
-    graph:     str = Query(...),
-    namespace: str = Query(...),
+    dataset:   str       = Query(...),
+    graph:     str       = Query(...),
+    namespace: list[str] = Query(...),
     class_iri: str | None = Query(None, description="Class IRI 필터 (optional)"),
 ):
+    ns_list = [ns for ns in namespace if ns.strip()]
+    if not ns_list:
+        raise HTTPException(422, "namespace는 하나 이상 유효한 값을 제공해야 합니다.")
     try:
-        inds = list_individuals(dataset, graph, namespace, class_iri)
+        inds = list_individuals(dataset, graph, ns_list, class_iri)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return IndividualsResponse(
-        dataset=dataset, graph=graph, namespace=namespace,
+        dataset=dataset, graph=graph, namespace=ns_list[0],
         individuals=[IndividualSummary(**i) for i in inds],
     )
 
@@ -130,6 +169,52 @@ def post_individual(body: CreateIndividualBody):
     except ValueError as e:
         raise HTTPException(422, str(e))
     return CreateIndividualResponse(iri=iri)
+
+
+@router.get("/{iri:path}/class-migrate-preview", response_model=MigratePreviewResponse)
+def get_class_migrate_preview(
+    iri: str,
+    dataset: str = Query(...),
+    graph:   str = Query(...),
+    new_class_iri: str = Query(...),
+):
+    """마이그레이션 시 비호환 property 목록 미리 조회."""
+    ind_iri = unquote(iri)
+    if ind_iri.endswith("/class-migrate-preview"):
+        ind_iri = ind_iri[: -len("/class-migrate-preview")]
+    try:
+        detail = get_individual_detail(dataset, graph, ind_iri)
+        if detail is None:
+            raise HTTPException(404, f"Individual not found: {ind_iri}")
+        old_class = detail["class_iri"]
+        incompat = get_incompatible_properties(dataset, graph, ind_iri, old_class, new_class_iri)
+        return MigratePreviewResponse(
+            individual_iri=ind_iri,
+            current_class_iri=old_class,
+            new_class_iri=new_class_iri,
+            incompatible_properties=incompat,
+        )
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.patch("/{iri:path}/class", response_model=MigrateClassResponse)
+def patch_individual_class(iri: str, body: MigrateClassBody):
+    """Individual의 rdf:type(Class)을 변경한다."""
+    ind_iri = unquote(iri)
+    if ind_iri.endswith("/class"):
+        ind_iri = ind_iri[: -len("/class")]
+    try:
+        result = migrate_individual_class(
+            dataset=body.dataset, graph=body.graph,
+            ind_iri=ind_iri, new_class_iri=body.new_class_iri,
+            incompatible_props=body.incompatible_props,
+        )
+        return MigrateClassResponse(**result)
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 @router.get("/{iri:path}", response_model=IndividualDetail)

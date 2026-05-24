@@ -2,9 +2,11 @@ import { apiFetch, encodeIRI } from './client'
 import type { ObjPropSummary, ObjPropDetail } from '../types/ontology'
 
 export const listObjProps = async (
-  ds: string, graph: string, ns: string,
+  ds: string, graph: string, ns: string | string[],
 ): Promise<ObjPropSummary[]> => {
-  const p = new URLSearchParams({ dataset: ds, graph, namespace: ns })
+  const p = new URLSearchParams({ dataset: ds, graph })
+  const nsList = Array.isArray(ns) ? ns : [ns]
+  nsList.forEach((n) => p.append('namespace', n))
   const res = await apiFetch<{ object_properties: ObjPropSummary[] }>(
     'GET', `/api/tbox/object-properties?${p}`,
   )

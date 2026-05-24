@@ -89,19 +89,23 @@ class AddSuperClassBody(BaseModel):
 
 @router.get("", response_model=ClassesResponse)
 def get_classes(
-    dataset:   str = Query(..., description="Fuseki dataset 명"),
-    graph:     str = Query(..., description="Named Graph IRI"),
-    namespace: str = Query(..., description="Namespace base IRI"),
+    dataset:   str       = Query(..., description="Fuseki dataset 명"),
+    graph:     str       = Query(..., description="Named Graph IRI"),
+    namespace: list[str] = Query(..., description="Namespace base IRI (복수 허용)"),
 ):
     """OOI 범위 내 모든 Class 목록을 반환한다."""
+    # 빈 문자열 필터링
+    ns_list = [ns for ns in namespace if ns.strip()]
+    if not ns_list:
+        raise HTTPException(422, "namespace는 하나 이상 유효한 값을 제공해야 합니다.")
     try:
-        classes = list_classes(dataset, graph, namespace)
+        classes = list_classes(dataset, graph, ns_list)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return ClassesResponse(
         dataset=dataset,
         graph=graph,
-        namespace=namespace,
+        namespace=ns_list[0],   # 하위호환: 첫 번째 namespace
         classes=[ClassSummary(**c) for c in classes],
     )
 

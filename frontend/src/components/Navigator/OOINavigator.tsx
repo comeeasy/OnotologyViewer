@@ -5,16 +5,18 @@ import {
 } from 'antd'
 import {
   CheckCircleOutlined, CloseCircleOutlined,
-  DeleteOutlined, LoadingOutlined, PlusOutlined, SettingOutlined,
+  DeleteOutlined, EditOutlined, LoadingOutlined, PlusOutlined, SettingOutlined,
 } from '@ant-design/icons'
 import {
   checkHealth, createDataset, createGraph, deleteDataset, deleteGraph,
   getGraphDetail, patchGraph, getDatasets, getGraphs, getNamespacesInGraph,
+  declareNamespace,
 } from '../../api/navigator'
 import type { GraphDetail } from '../../api/navigator'
 import { useOOI } from '../../context/OOIContext'
 import type { Dataset, Namespace } from '../../types/ontology'
 import FusekiConfigModal from './FusekiConfigModal'
+import NamespaceEditModal from './NamespaceEditModal'
 
 const { Text } = Typography
 
@@ -30,7 +32,7 @@ const OOINavigator: React.FC = () => {
 
   const [selDataset, setSelDataset] = useState<string | null>(null)
   const [selGraph, setSelGraph] = useState<string | null>(null)
-  const [selNs, setSelNs] = useState<string | null>(null)
+  const [selNs, setSelNs] = useState<string[]>([])
 
   // Dataset 생성/삭제
   const [dsModalOpen, setDsModalOpen] = useState(false)
@@ -60,7 +62,7 @@ const OOINavigator: React.FC = () => {
     try {
       await deleteDataset(selDataset)
       message.success(`Dataset '${selDataset}'이(가) 삭제되었습니다.`)
-      setSelDataset(null); setSelGraph(null); setSelNs(null)
+      setSelDataset(null); setSelGraph(null); setSelNs([])
       const updated = await getDatasets()
       setDatasets(updated)
       if (dataset === selDataset) clear()
@@ -81,6 +83,39 @@ const OOINavigator: React.FC = () => {
 
   // Fuseki 연결 설정 Modal
   const [configModalOpen, setConfigModalOpen] = useState(false)
+
+  // v02-C: Namespace 편집 Modal
+  const [nsEditTarget, setNsEditTarget] = useState<Namespace | null>(null)
+
+  // v02-C: Namespace 선언 Modal
+  const [nsDeclOpen, setNsDeclOpen] = useState(false)
+  const [nsDeclForm] = Form.useForm()
+  const [nsDeclaring, setNsDeclaring] = useState(false)
+
+  const handleDeclareNamespace = async () => {
+    if (!selDataset || !selGraph) return
+    const { ns_iri, prefix } = await nsDeclForm.validateFields()
+    setNsDeclaring(true)
+    try {
+      await declareNamespace(selDataset, selGraph, ns_iri.trim(), prefix.trim())
+      message.success('Namespace가 선언되었습니다.')
+      setNsDeclOpen(false)
+      nsDeclForm.resetFields()
+      reloadNamespaces()
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setNsDeclaring(false)
+    }
+  }
+
+  const reloadNamespaces = () => {
+    if (selDataset && selGraph) {
+      getNamespacesInGraph(selDataset, selGraph)
+        .then(setNamespaces)
+        .catch(() => setNamespaces([]))
+    }
+  }
 
   const recheckHealth = () => {
     setHealth('checking')
@@ -108,10 +143,11 @@ const OOINavigator: React.FC = () => {
   // ── graph 선택 시 namespaces + detail 로드 ──
   useEffect(() => {
     if (!selDataset || !selGraph) {
-      setNamespaces([]); setSelNs(null); setGraphDetail(null); return
+      setNamespaces([]); setSelNs([]); setGraphDetail(null); return
     }
     getNamespacesInGraph(selDataset, selGraph).then(setNamespaces).catch(() => setNamespaces([]))
     getGraphDetail(selDataset, selGraph).then(setGraphDetail).catch(() => setGraphDetail(null))
+    setSelNs([])  // graph 변경 시 namespace 선택 초기화
   }, [selDataset, selGraph])
 
   const customNamespaces = namespaces.filter((n) => n.type === 'custom')
@@ -172,7 +208,7 @@ const OOINavigator: React.FC = () => {
       await deleteGraph(selDataset, selGraph)
       message.success('Named Graph이 삭제되었습니다.')
       setSelGraph(null)
-      setSelNs(null)
+      setSelNs([])
       loadGraphs(selDataset)
       // 현재 OOI가 이 graph를 쓰고 있었다면 초기화
       if (graph === selGraph) clear()
@@ -181,7 +217,7 @@ const OOINavigator: React.FC = () => {
     }
   }
 
-  const canApply = !!(selDataset && selGraph && selNs)
+  const canApply = !!(selDataset && selGraph && selNs.length > 0)
 
   return (
     <Space direction="vertical" style={{ width: '100%', padding: '12px 16px' }}>
@@ -229,7 +265,7 @@ const OOINavigator: React.FC = () => {
           style={{ width: '100%' }}
           placeholder="선택"
           value={selDataset}
-          onChange={(v) => { setSelDataset(v); setSelGraph(null); setSelNs(null) }}
+          onChange={(v) => { setSelDataset(v); setSelGraph(null); setSelNs([]) }}
           options={datasets.map((d) => ({
             label: <span>{d.name} <Badge status={d.state === 'active' ? 'success' : 'default'} /></span>,
             value: d.name,
@@ -276,7 +312,7 @@ const OOINavigator: React.FC = () => {
           placeholder={selDataset && graphs.length === 0 ? '없음 — + 로 생성' : '선택'}
           disabled={!selDataset}
           value={selGraph}
-          onChange={(v) => { setSelGraph(v); setSelNs(null) }}
+          onChange={(v) => { setSelGraph(v); setSelNs([]) }}
           options={graphs.map((g) => ({ label: shortIRI(g), value: g, title: g }))}
         />
         {graphDetail && (
@@ -293,25 +329,64 @@ const OOINavigator: React.FC = () => {
         )}
       </div>
 
-      {/* Namespace */}
+      {/* Namespace (복수 선택 + CRUD) */}
       <div>
-        <Text type="secondary" style={{ fontSize: 12 }}>Namespace (Custom)</Text>
-        <Select
-          style={{ width: '100%', marginTop: 4 }}
-          placeholder={selGraph && customNamespaces.length === 0 ? '없음 — Class 생성 시 자동 등록' : '선택'}
-          disabled={!selGraph || customNamespaces.length === 0}
-          value={selNs}
-          onChange={setSelNs}
-          options={customNamespaces.map((n) => ({
-            label: n.prefix ? `${n.prefix}: ${shortIRI(n.base_iri, 20)}` : shortIRI(n.base_iri),
-            value: n.base_iri,
-            title: n.base_iri,
-          }))}
-        />
+        <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 4 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>Namespace</Text>
+          <Space size={4}>
+            {customNamespaces.length > 0 && (
+              <Button
+                size="small" type="link" style={{ padding: 0, fontSize: 11 }}
+                onClick={() => setSelNs(customNamespaces.map((n) => n.base_iri))}
+              >
+                전체 선택
+              </Button>
+            )}
+            <Tooltip title="Namespace 선언">
+              <Button
+                size="small" type="text" icon={<PlusOutlined />}
+                disabled={!selGraph}
+                onClick={() => { nsDeclForm.resetFields(); setNsDeclOpen(true) }}
+              />
+            </Tooltip>
+          </Space>
+        </Space>
         {selGraph && customNamespaces.length === 0 && (
-          <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
-            💡 Class/Property를 생성하면 Namespace가 등록됩니다.
+          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+            💡 Class/Property를 생성하거나 + 로 직접 선언하세요.
           </Text>
+        )}
+        {customNamespaces.length > 0 && (
+          <div style={{ border: '1px solid #d9d9d9', borderRadius: 4, padding: '6px 8px', maxHeight: 140, overflowY: 'auto' }}>
+            {customNamespaces.map((n) => (
+              <div key={n.base_iri} style={{ marginBottom: 2, display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  id={`ns-${n.base_iri}`}
+                  checked={selNs.includes(n.base_iri)}
+                  onChange={(e) => {
+                    if (e.target.checked) setSelNs((prev) => [...prev, n.base_iri])
+                    else setSelNs((prev) => prev.filter((x) => x !== n.base_iri))
+                  }}
+                  style={{ marginRight: 6 }}
+                />
+                <label
+                  htmlFor={`ns-${n.base_iri}`}
+                  style={{ fontSize: 11, cursor: 'pointer', flex: 1 }}
+                  title={n.base_iri}
+                >
+                  {n.prefix ? `${n.prefix}:` : ''} {shortIRI(n.base_iri, 20)}
+                </label>
+                <Tooltip title="Namespace 편집">
+                  <Button
+                    size="small" type="text" icon={<EditOutlined />}
+                    style={{ padding: '0 2px', height: 18, fontSize: 10 }}
+                    onClick={() => setNsEditTarget(n)}
+                  />
+                </Tooltip>
+              </div>
+            ))}
+          </div>
         )}
         {universalNamespaces.length > 0 && (
           <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
@@ -321,7 +396,7 @@ const OOINavigator: React.FC = () => {
       </div>
 
       <Button type="primary" block disabled={!canApply} onClick={() => {
-        if (canApply) setOOI(selDataset!, selGraph!, selNs!)
+        if (canApply) setOOI(selDataset!, selGraph!, selNs)
       }}>
         OOI 설정
       </Button>
@@ -439,6 +514,52 @@ const OOINavigator: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* v02-C: Namespace 선언 Modal */}
+      <Modal
+        title="Namespace 선언"
+        open={nsDeclOpen}
+        onOk={handleDeclareNamespace}
+        onCancel={() => setNsDeclOpen(false)}
+        okText="선언"
+        confirmLoading={nsDeclaring}
+        destroyOnClose
+      >
+        <Form form={nsDeclForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="ns_iri"
+            label="Namespace IRI"
+            rules={[
+              { required: true, message: 'IRI를 입력하세요.' },
+              { pattern: /^https?:\/\//, message: 'http:// 또는 https:// 로 시작해야 합니다.' },
+            ]}
+          >
+            <Input placeholder="예: http://myorg.com/ontology/v1#" />
+          </Form.Item>
+          <Form.Item
+            name="prefix"
+            label="Prefix"
+            rules={[{ required: true, message: 'Prefix를 입력하세요.' }]}
+          >
+            <Input placeholder="예: myont" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* v02-C: Namespace 편집 Modal */}
+      {nsEditTarget && selDataset && selGraph && (
+        <NamespaceEditModal
+          open={!!nsEditTarget}
+          dataset={selDataset}
+          graph={selGraph}
+          ns={nsEditTarget}
+          onClose={() => setNsEditTarget(null)}
+          onChanged={() => {
+            reloadNamespaces()
+            setSelNs([])
+          }}
+        />
+      )}
     </Space>
   )
 }
