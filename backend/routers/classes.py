@@ -6,10 +6,12 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from services.class_ import (
+    add_super_class,
     create_class,
     delete_class,
     get_class_detail,
     list_classes,
+    remove_super_class,
     update_class,
 )
 
@@ -73,6 +75,12 @@ class UpdateClassBody(BaseModel):
     graph:    str
     label:    str | None = None
     comment:  str | None = None
+
+
+class AddSuperClassBody(BaseModel):
+    dataset:    str
+    graph:      str
+    parent_iri: str
 
 
 # ────────────────────────────────────────────────
@@ -156,6 +164,41 @@ def patch_class(iri: str, body: UpdateClassBody):
         raise HTTPException(status_code=422, detail=str(e))
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
+
+
+@router.post("/{iri:path}/super-classes", status_code=201)
+def post_super_class(iri: str, body: AddSuperClassBody):
+    """child rdfs:subClassOf parent 관계를 추가한다."""
+    child_iri = unquote(iri)
+    if child_iri.endswith("/super-classes"):
+        child_iri = child_iri[: -len("/super-classes")]
+    try:
+        add_super_class(body.dataset, body.graph, child_iri, body.parent_iri)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise HTTPException(404, msg)
+        if "circular" in msg:
+            raise HTTPException(400, msg)
+        raise HTTPException(422, msg)
+
+
+@router.delete("/{iri:path}/super-classes/{parent:path}", status_code=204)
+def delete_super_class(
+    iri:     str,
+    parent:  str,
+    dataset: str = Query(...),
+    graph:   str = Query(...),
+):
+    """child rdfs:subClassOf parent 관계를 삭제한다 (멱등)."""
+    child_iri = unquote(iri)
+    if child_iri.endswith("/super-classes"):
+        child_iri = child_iri[: -len("/super-classes")]
+    parent_iri = unquote(parent)
+    try:
+        remove_super_class(dataset, graph, child_iri, parent_iri)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 @router.delete("/{iri:path}", status_code=204)

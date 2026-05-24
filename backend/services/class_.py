@@ -188,6 +188,35 @@ DELETE WHERE {{ GRAPH <{graph}> {{ <{class_iri}> ?p ?o }} }}
 """
 
 
+# subClassOf 편집 (v02-D)
+_Q_IS_DESCENDANT = """
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+ASK {{
+  GRAPH <{graph}> {{
+    <{candidate_desc}> rdfs:subClassOf+ <{ancestor}> .
+  }}
+}}
+"""
+
+_U_INS_SUBCLASSOF = """
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+INSERT DATA {{
+  GRAPH <{graph}> {{
+    <{child}> rdfs:subClassOf <{parent}> .
+  }}
+}}
+"""
+
+_U_DEL_SUBCLASSOF = """
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+DELETE DATA {{
+  GRAPH <{graph}> {{
+    <{child}> rdfs:subClassOf <{parent}> .
+  }}
+}}
+"""
+
+
 # ────────────────────────────────────────────────
 # 공개 함수
 # ────────────────────────────────────────────────
@@ -295,6 +324,56 @@ def update_class(
             dataset,
             _U_UPDATE_COMMENT.format(graph=graph, class_iri=class_iri, value=_esc(comment)),
         )
+
+
+def _class_exists(dataset: str, graph: str, class_iri: str) -> bool:
+    rows = sparql_query(dataset, _Q_CLASS_BASE.format(graph=graph, class_iri=class_iri))
+    return bool(rows)
+
+
+def _is_descendant(dataset: str, graph: str, candidate_desc: str, ancestor: str) -> bool:
+    """candidate_desc 가 ancestor 의 직접/간접 하위 클래스인지 확인."""
+    from fuseki.sparql import query as _q
+    from SPARQLWrapper import JSON, SPARQLWrapper
+    import config_state
+    # ASK 쿼리 직접 실행
+    sparql_str = _Q_IS_DESCENDANT.format(
+        graph=graph, candidate_desc=candidate_desc, ancestor=ancestor,
+    )
+    endpoint = f"{config_state.base_url()}/{dataset}/sparql"
+    sw = SPARQLWrapper(endpoint)
+    user, pw = config_state.auth()
+    sw.setHTTPAuth("BASIC")
+    sw.setCredentials(user, pw)
+    sw.setReturnFormat(JSON)
+    sw.setQuery(sparql_str)
+    result = sw.query().convert()
+    return bool(result.get("boolean", False))
+
+
+def add_super_class(dataset: str, graph: str, child_iri: str, parent_iri: str) -> None:
+    """child rdfs:subClassOf parent 트리플을 삽입한다.
+
+    Raises:
+        ValueError("not found: child"): child class 미존재
+        ValueError("not found: parent"): parent class 미존재
+        ValueError("circular"): 순환 참조 발생
+    """
+    _validate_iri(graph); _validate_iri(child_iri); _validate_iri(parent_iri)
+    if not _class_exists(dataset, graph, child_iri):
+        raise ValueError(f"not found: child {child_iri}")
+    if not _class_exists(dataset, graph, parent_iri):
+        raise ValueError(f"not found: parent {parent_iri}")
+    # 순환 참조 검사: parent가 child의 하위 클래스이면 사이클 발생
+    if _is_descendant(dataset, graph, candidate_desc=parent_iri, ancestor=child_iri):
+        raise ValueError(f"circular: {parent_iri} is already a descendant of {child_iri}")
+    sparql_update(dataset, _U_INS_SUBCLASSOF.format(graph=graph, child=child_iri, parent=parent_iri))
+
+
+def remove_super_class(dataset: str, graph: str, child_iri: str, parent_iri: str) -> None:
+    """child rdfs:subClassOf parent 트리플을 삭제한다 (멱등)."""
+    _validate_iri(graph); _validate_iri(child_iri); _validate_iri(parent_iri)
+    sparql_update(dataset, _U_DEL_SUBCLASSOF.format(graph=graph, child=child_iri, parent=parent_iri))
 
 
 def delete_class(dataset: str, graph: str, class_iri: str, on_individual: str = "delete") -> None:

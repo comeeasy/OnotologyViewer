@@ -122,6 +122,13 @@ const ClassTable: React.FC = () => {
     }
   }
 
+  const refreshDetail = async () => {
+    if (!dataset || !graph || !drawerDetail) return
+    try {
+      setDrawerDetail(await getClass(dataset, graph, drawerDetail.iri))
+    } catch { /* 무시 */ }
+  }
+
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
 
   const columns = [
@@ -206,7 +213,9 @@ const ClassTable: React.FC = () => {
         open={drawerOpen}
         detail={drawerDetail}
         loading={drawerLoading}
+        allClasses={rows}
         onClose={() => setDrawerOpen(false)}
+        onRefresh={refreshDetail}
       />
     </>
   )

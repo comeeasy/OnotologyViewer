@@ -41,3 +41,21 @@ export const deleteClass = async (
   const p = new URLSearchParams({ dataset: ds, graph, on_individual: onIndividual })
   await apiFetch<void>('DELETE', `/api/tbox/classes/${encodeIRI(iri)}?${p}`)
 }
+
+export const addSuperClass = async (
+  ds: string, graph: string, childIri: string, parentIri: string,
+): Promise<void> => {
+  await apiFetch<void>('POST', `/api/tbox/classes/${encodeIRI(childIri)}/super-classes`, {
+    dataset: ds, graph, parent_iri: parentIri,
+  })
+}
+
+export const removeSuperClass = async (
+  ds: string, graph: string, childIri: string, parentIri: string,
+): Promise<void> => {
+  const p = new URLSearchParams({ dataset: ds, graph })
+  await apiFetch<void>(
+    'DELETE',
+    `/api/tbox/classes/${encodeIRI(childIri)}/super-classes/${encodeIRI(parentIri)}?${p}`,
+  )
+}
