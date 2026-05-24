@@ -6,6 +6,8 @@ import ClassTable from './components/Classes/ClassTable'
 import ObjPropTable from './components/ObjProps/ObjPropTable'
 import DataPropTable from './components/DataProps/DataPropTable'
 import IndividualTable from './components/Individuals/IndividualTable'
+import SparqlEditor from './components/SparqlEditor/SparqlEditor'
+import ReasoningPanel from './components/Reasoning/ReasoningPanel'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
@@ -46,6 +48,16 @@ const tabItems = [
     key: 'individuals',
     label: 'Individual',
     children: <OOIGuard><IndividualTable /></OOIGuard>,
+  },
+  {
+    key: 'sparql',
+    label: '🔍 SPARQL',
+    children: <OOIGuard><SparqlEditor /></OOIGuard>,
+  },
+  {
+    key: 'reasoning',
+    label: '🧠 Reasoning',
+    children: <OOIGuard><ReasoningPanel /></OOIGuard>,
   },
 ]
 
