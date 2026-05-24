@@ -255,7 +255,11 @@ const IndividualTable: React.FC = () => {
         open={drawerOpen}
         detail={drawerDetail}
         loading={drawerLoading}
+        dataset={dataset ?? ''}
+        graph={graph ?? ''}
+        namespaces={namespace ? [namespace] : []}
         onClose={() => setDrawerOpen(false)}
+        onRefresh={loadRows}
       />
     </>
   )

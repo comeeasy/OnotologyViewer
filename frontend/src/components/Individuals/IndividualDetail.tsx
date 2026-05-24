@@ -1,6 +1,8 @@
-import React from 'react'
-import { Descriptions, Drawer, Space, Spin, Table, Tag, Typography } from 'antd'
+import React, { useState } from 'react'
+import { Button, Descriptions, Drawer, Space, Spin, Table, Tag, Typography } from 'antd'
+import { SwapOutlined } from '@ant-design/icons'
 import type { IndividualDetail as IIndividualDetail } from '../../types/ontology'
+import ClassMigrateModal from './ClassMigrateModal'
 
 const { Text } = Typography
 
@@ -8,11 +10,19 @@ interface Props {
   open: boolean
   detail: IIndividualDetail | null
   loading: boolean
+  dataset: string
+  graph: string
+  namespaces: string[]
   onClose: () => void
+  onRefresh?: () => void
 }
 
-const IndividualDetail: React.FC<Props> = ({ open, detail, loading, onClose }) => {
+const IndividualDetail: React.FC<Props> = ({
+  open, detail, loading, dataset, graph, namespaces, onClose, onRefresh,
+}) => {
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
+
+  const [migrateOpen, setMigrateOpen] = useState(false)
 
   return (
     <Drawer title="Individual 상세" width={520} open={open} onClose={onClose}>
@@ -23,7 +33,18 @@ const IndividualDetail: React.FC<Props> = ({ open, detail, loading, onClose }) =
             <Descriptions.Item label="Label">{detail.label ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="Comment">{detail.comment ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="Class">
-              <span title={detail.class_iri}>{shortIRI(detail.class_iri)}</span>
+              <Space>
+                <span title={detail.class_iri}>{shortIRI(detail.class_iri)}</span>
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<SwapOutlined />}
+                  onClick={() => setMigrateOpen(true)}
+                  style={{ padding: 0 }}
+                >
+                  변경
+                </Button>
+              </Space>
             </Descriptions.Item>
             <Descriptions.Item label="IRI">
               <Text copyable style={{ fontSize: 11, wordBreak: 'break-all' }}>{detail.iri}</Text>
@@ -82,6 +103,21 @@ const IndividualDetail: React.FC<Props> = ({ open, detail, loading, onClose }) =
               ]}
             />
           </div>
+
+          {/* v02-E: Class 마이그레이션 Modal */}
+          <ClassMigrateModal
+            open={migrateOpen}
+            dataset={dataset}
+            graph={graph}
+            namespaces={namespaces}
+            individualIri={detail.iri}
+            currentClassIri={detail.class_iri}
+            onClose={() => setMigrateOpen(false)}
+            onMigrated={() => {
+              setMigrateOpen(false)
+              onRefresh?.()
+            }}
+          />
         </Space>
       )}
     </Drawer>
