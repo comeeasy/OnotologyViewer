@@ -114,6 +114,13 @@ const ObjPropTable: React.FC = () => {
     }
   }
 
+  const refreshDetail = async () => {
+    if (!dataset || !graph || !drawerDetail) return
+    try {
+      setDrawerDetail(await getObjProp(dataset, graph, drawerDetail.iri))
+    } catch { /* 무시 */ }
+  }
+
   const shortIRI = (iri: string | null) => iri?.split(/[#/]/).pop() ?? '-'
 
   const columns = [
@@ -184,7 +191,9 @@ const ObjPropTable: React.FC = () => {
         open={drawerOpen}
         detail={drawerDetail}
         loading={drawerLoading}
+        allProps={rows}
         onClose={() => setDrawerOpen(false)}
+        onRefresh={refreshDetail}
       />
     </>
   )

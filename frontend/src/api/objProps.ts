@@ -43,3 +43,18 @@ export const deleteObjProp = async (
   const p = new URLSearchParams({ dataset: ds, graph })
   await apiFetch<void>('DELETE', `/api/tbox/object-properties/${encodeIRI(iri)}?${p}`)
 }
+
+export const addInverseOf = async (
+  ds: string, graph: string, iri: string, inverseIri: string,
+): Promise<void> => {
+  await apiFetch<void>('POST', `/api/tbox/object-properties/${encodeIRI(iri)}/inverse`, {
+    dataset: ds, graph, inverse_iri: inverseIri,
+  })
+}
+
+export const removeInverseOf = async (
+  ds: string, graph: string, iri: string, inverseIri: string,
+): Promise<void> => {
+  const p = new URLSearchParams({ dataset: ds, graph, inverse_iri: inverseIri })
+  await apiFetch<void>('DELETE', `/api/tbox/object-properties/${encodeIRI(iri)}/inverse?${p}`)
+}

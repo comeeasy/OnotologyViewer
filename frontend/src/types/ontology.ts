@@ -45,6 +45,7 @@ export interface ObjPropSummary {
 
 export interface ObjPropDetail extends ObjPropSummary {
   characteristics: string[]
+  inverse_of: string[]
 }
 
 // characteristics 가능 값

@@ -3,13 +3,15 @@
 from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from services.object_property import (
+    add_inverse_of,
     create_object_property,
     delete_object_property,
     get_object_property_detail,
     list_object_properties,
+    remove_inverse_of,
     update_object_property,
 )
 
@@ -40,6 +42,23 @@ class ObjectPropertyDetail(BaseModel):
     domain:          str | None
     range:           str | None
     characteristics: list[str]
+    inverse_of:      list[str] = []
+
+
+class InverseOfBody(BaseModel):
+    dataset:     str
+    graph:       str
+    inverse_iri: str
+
+    @field_validator("inverse_iri")
+    @classmethod
+    def inv_must_be_http(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("inverse_iri는 빈 문자열일 수 없습니다.")
+        if not v.startswith("http://") and not v.startswith("https://"):
+            raise ValueError("inverse_iri는 http:// 또는 https://로 시작해야 합니다.")
+        return v
 
 
 class CreateObjectPropertyBody(BaseModel):
@@ -123,6 +142,39 @@ def patch_object_property(iri: str, body: UpdateObjectPropertyBody):
             label=body.label, domain=body.domain, range_=body.range,
             characteristics=body.characteristics,
         )
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.post("/{iri:path}/inverse", status_code=201)
+def post_inverse_of(iri: str, body: InverseOfBody):
+    """Object Property에 owl:inverseOf 관계를 추가한다."""
+    prop_iri = unquote(iri)
+    # /inverse suffix를 제거한 실제 IRI 복원
+    if prop_iri.endswith("/inverse"):
+        prop_iri = prop_iri[: -len("/inverse")]
+    try:
+        add_inverse_of(body.dataset, body.graph, prop_iri, body.inverse_iri)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg.lower():
+            raise HTTPException(404, msg)
+        raise HTTPException(422, msg)
+
+
+@router.delete("/{iri:path}/inverse", status_code=204)
+def delete_inverse_of(
+    iri:         str,
+    dataset:     str = Query(...),
+    graph:       str = Query(...),
+    inverse_iri: str = Query(...),
+):
+    """Object Property의 owl:inverseOf 관계를 삭제한다."""
+    prop_iri = unquote(iri)
+    if prop_iri.endswith("/inverse"):
+        prop_iri = prop_iri[: -len("/inverse")]
+    try:
+        remove_inverse_of(dataset, graph, prop_iri, inverse_iri)
     except ValueError as e:
         raise HTTPException(422, str(e))
 

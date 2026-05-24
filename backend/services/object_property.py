@@ -132,6 +132,36 @@ _U_DEL_PROP = """
 DELETE WHERE {{ GRAPH <{graph}> {{ <{prop_iri}> ?p ?o }} }}
 """
 
+# ── inverseOf ──
+_Q_INVERSE_OF = """
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+SELECT DISTINCT ?inv WHERE {{
+  GRAPH <{graph}> {{
+    {{  <{prop_iri}> owl:inverseOf ?inv }}
+    UNION
+    {{ ?inv owl:inverseOf <{prop_iri}> }}
+  }}
+}}
+"""
+
+_U_INS_INVERSE = """
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+INSERT DATA {{
+  GRAPH <{graph}> {{
+    <{prop_iri}> owl:inverseOf <{inv_iri}> .
+  }}
+}}
+"""
+
+_U_DEL_INVERSE = """
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+DELETE DATA {{
+  GRAPH <{graph}> {{
+    <{prop_iri}> owl:inverseOf <{inv_iri}> .
+  }}
+}}
+"""
+
 
 # ────────────────────────────────────────────────
 # 헬퍼
@@ -177,12 +207,15 @@ def get_object_property_detail(dataset: str, graph: str, prop_iri: str) -> dict 
         for row in chars_rows
         if row["char"] in _CHAR_IRI_TO_NAME
     ]
+    inv_rows = sparql_query(dataset, _Q_INVERSE_OF.format(graph=graph, prop_iri=prop_iri))
+    inverse_of = [row["inv"] for row in inv_rows]
     return {
         "iri":             prop_iri,
         "label":           r.get("label"),
         "domain":          r.get("domain"),
         "range":           r.get("range"),
         "characteristics": characteristics,
+        "inverse_of":      inverse_of,
     }
 
 
@@ -250,6 +283,21 @@ def update_object_property(
             sparql_update(dataset, _U_INS_CHARS.format(
                 graph=graph, char_triples=char_block
             ))
+
+
+def add_inverse_of(dataset: str, graph: str, prop_iri: str, inv_iri: str) -> None:
+    """owl:inverseOf 관계를 추가한다 (멱등: 이미 있으면 SPARQL INSERT DATA가 중복 없이 처리)."""
+    _validate_iri(graph); _validate_iri(prop_iri); _validate_iri(inv_iri)
+    # 존재 여부 확인
+    if get_object_property_detail(dataset, graph, prop_iri) is None:
+        raise ValueError(f"Object Property not found: {prop_iri}")
+    sparql_update(dataset, _U_INS_INVERSE.format(graph=graph, prop_iri=prop_iri, inv_iri=inv_iri))
+
+
+def remove_inverse_of(dataset: str, graph: str, prop_iri: str, inv_iri: str) -> None:
+    """owl:inverseOf 관계를 삭제한다 (멱등: 없으면 SPARQL DELETE DATA가 오류 없이 처리)."""
+    _validate_iri(graph); _validate_iri(prop_iri); _validate_iri(inv_iri)
+    sparql_update(dataset, _U_DEL_INVERSE.format(graph=graph, prop_iri=prop_iri, inv_iri=inv_iri))
 
 
 def delete_object_property(dataset: str, graph: str, prop_iri: str) -> None:
