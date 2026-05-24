@@ -8,6 +8,7 @@ import DataPropTable from './components/DataProps/DataPropTable'
 import IndividualTable from './components/Individuals/IndividualTable'
 import SparqlEditor from './components/SparqlEditor/SparqlEditor'
 import ReasoningPanel from './components/Reasoning/ReasoningPanel'
+import ShaclPanel from './components/Shacl/ShaclPanel'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
@@ -58,6 +59,11 @@ const tabItems = [
     key: 'reasoning',
     label: '🧠 Reasoning',
     children: <OOIGuard><ReasoningPanel /></OOIGuard>,
+  },
+  {
+    key: 'shacl',
+    label: '🛡️ SHACL',
+    children: <OOIGuard><ShaclPanel /></OOIGuard>,
   },
 ]
 
