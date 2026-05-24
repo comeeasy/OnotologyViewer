@@ -67,3 +67,59 @@ export const getNamespacesInGraph = async (
   )
   return res.namespaces
 }
+
+// ── v02-C Namespace CRUD ────────────────────────────────────────────────
+
+export interface NsDeclResponse {
+  ns_iri: string
+  prefix: string
+}
+
+export interface RenamePreviewResponse {
+  affected_triples: number
+  old_ns: string
+  new_ns: string
+}
+
+export interface RenameNsResponse {
+  old_ns: string
+  new_ns: string
+  affected_triples: number
+}
+
+export const declareNamespace = async (
+  ds: string, graph: string, ns_iri: string, prefix: string,
+): Promise<NsDeclResponse> =>
+  apiFetch<NsDeclResponse>('POST', `/api/datasets/${ds}/graphs/namespaces`, {
+    graph, ns_iri, prefix,
+  })
+
+export const updateNsPrefix = async (
+  ds: string, graph: string, ns_iri: string, prefix: string,
+): Promise<NsDeclResponse> =>
+  apiFetch<NsDeclResponse>('PATCH', `/api/datasets/${ds}/graphs/namespaces`, {
+    graph, ns_iri, prefix,
+  })
+
+export const previewRenameNs = async (
+  ds: string, graph: string, old_ns: string, new_ns: string,
+): Promise<RenamePreviewResponse> => {
+  const p = new URLSearchParams({ graph, old_ns, new_ns })
+  return apiFetch<RenamePreviewResponse>(
+    'GET', `/api/datasets/${ds}/graphs/namespaces/rename-preview?${p}`,
+  )
+}
+
+export const renameNamespace = async (
+  ds: string, graph: string, old_ns: string, new_ns: string,
+): Promise<RenameNsResponse> =>
+  apiFetch<RenameNsResponse>('POST', `/api/datasets/${ds}/graphs/namespaces/rename`, {
+    graph, old_ns, new_ns,
+  })
+
+export const deleteNamespace = async (
+  ds: string, graph: string, ns_iri: string,
+): Promise<void> => {
+  const p = new URLSearchParams({ graph, ns_iri })
+  await apiFetch<void>('DELETE', `/api/datasets/${ds}/graphs/namespaces?${p}`)
+}

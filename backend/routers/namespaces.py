@@ -1,21 +1,18 @@
-"""Namespace 목록 조회 및 상호 포함 관계 조회."""
+"""Namespace 목록 조회 및 CRUD (v02-C)."""
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Query, HTTPException
+from pydantic import BaseModel, field_validator
 from typing import Literal
 
 from fuseki.sparql import query as sparql_query
 from services.namespace import classify, get_prefix
+import services.namespace_crud as ns_crud
 
 router = APIRouter(prefix="/api/datasets", tags=["namespaces"])
 
 
 # ---------- SPARQL ----------
 
-# Named Graph 내 모든 subject IRI에서 base IRI를 추출한다.
-# - REPLACE 패턴: 마지막 '#' 또는 '/' 이후 문자열을 제거 → base IRI만 남김
-# - FILTER: IRI가 http로 시작하는 것만 (blank node, literal 제거)
-# - FILTER(isIRI): subject가 IRI인 것만
 _Q_NS_IN_GRAPH = """
 SELECT DISTINCT ?ns WHERE {{
   GRAPH <{graph}> {{
@@ -27,7 +24,6 @@ SELECT DISTINCT ?ns WHERE {{
 }}
 """
 
-# dataset 전체 그래프를 가로질러 모든 namespace를 한 번에 추출한다.
 _Q_ALL_NS = """
 SELECT DISTINCT ?ns WHERE {
   GRAPH ?g {
@@ -39,7 +35,6 @@ SELECT DISTINCT ?ns WHERE {
 }
 """
 
-# 특정 base IRI로 시작하는 subject가 있는 Named Graph를 찾는다.
 _Q_GRAPHS_FOR_NS = """
 SELECT DISTINCT ?g WHERE {{
   GRAPH ?g {{
@@ -50,12 +45,25 @@ SELECT DISTINCT ?g WHERE {{
 }}
 """
 
+# 선언된 namespace prefix 목록 (graph 내 vann:preferredNamespacePrefix)
+_Q_DECLARED_IN_GRAPH = """
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+PREFIX vann: <http://purl.org/vocab/vann/>
+SELECT ?ns ?prefix WHERE {{
+  GRAPH <{graph}> {{
+    ?ns a owl:Ontology ;
+        vann:preferredNamespacePrefix ?prefix .
+  }}
+  FILTER(STRSTARTS(str(?ns), "http"))
+}}
+"""
+
 
 # ---------- Response models ----------
 
 class Namespace(BaseModel):
     base_iri: str
-    prefix: str | None          # Universal이면 canonical prefix, Custom이면 None
+    prefix: str | None
     type: Literal["custom", "universal"]
 
 
@@ -74,26 +82,87 @@ class NamespaceGraphsResponse(BaseModel):
     graphs: list[str]
 
 
+class DeclareNsBody(BaseModel):
+    graph: str
+    ns_iri: str
+    prefix: str
+
+    @field_validator("ns_iri")
+    @classmethod
+    def must_be_http(cls, v: str) -> str:
+        if not v.startswith("http://") and not v.startswith("https://"):
+            raise ValueError("ns_iri must start with http:// or https://")
+        return v
+
+
+class PatchNsBody(BaseModel):
+    graph: str
+    ns_iri: str
+    prefix: str
+
+
+class RenameNsBody(BaseModel):
+    graph: str
+    old_ns: str
+    new_ns: str
+
+
+class NsDeclResponse(BaseModel):
+    ns_iri: str
+    prefix: str
+
+
+class RenamePreviewResponse(BaseModel):
+    affected_triples: int
+    old_ns: str
+    new_ns: str
+
+
+class RenameResponse(BaseModel):
+    old_ns: str
+    new_ns: str
+    affected_triples: int
+
+
 # ---------- Helper ----------
 
-def _to_namespace(base_iri: str) -> Namespace:
-    return Namespace(
-        base_iri=base_iri,
-        prefix=get_prefix(base_iri),
-        type=classify(base_iri),
-    )
+def _to_namespace(base_iri: str, declared_prefixes: dict[str, str] | None = None) -> Namespace:
+    """
+    declared_prefixes: {ns_iri: prefix} — graph에 명시적으로 선언된 prefix
+    Custom namespace도 선언이 있으면 해당 prefix 반환.
+    """
+    ns_type = classify(base_iri)
+    if declared_prefixes and base_iri in declared_prefixes:
+        prefix = declared_prefixes[base_iri]
+    else:
+        prefix = get_prefix(base_iri)
+    return Namespace(base_iri=base_iri, prefix=prefix, type=ns_type)
+
+
+def _get_declared_prefixes(dataset: str, graph: str) -> dict[str, str]:
+    """graph에서 vann:preferredNamespacePrefix 선언을 조회."""
+    rows = sparql_query(dataset, _Q_DECLARED_IN_GRAPH.format(graph=graph))
+    return {r["ns"]: r["prefix"] for r in rows}
 
 
 # ---------- Endpoints ----------
 
 @router.get("/{ds}/namespaces", response_model=NamespacesResponse)
 def get_all_namespaces(ds: str):
-    """
-    dataset 전체 Named Graph에 걸쳐 중복 없이 모든 Namespace를 반환한다.
-    Custom / Universal 구분 포함.
-    """
     rows = sparql_query(ds, _Q_ALL_NS)
     return NamespacesResponse(namespaces=[_to_namespace(r["ns"]) for r in rows])
+
+
+@router.get("/{ds}/graphs/namespaces/rename-preview", response_model=RenamePreviewResponse)
+def get_rename_preview(
+    ds: str,
+    graph: str = Query(...),
+    old_ns: str = Query(...),
+    new_ns: str = Query(...),
+):
+    """IRI 치환 시 영향받는 triple 수 미리 조회 (읽기 전용)."""
+    result = ns_crud.preview_rename(ds, graph, old_ns, new_ns)
+    return RenamePreviewResponse(**result)
 
 
 @router.get("/{ds}/graphs/namespaces", response_model=GraphNamespacesResponse)
@@ -101,18 +170,52 @@ def get_namespaces_in_graph(
     ds: str,
     graph: str = Query(..., description="Named Graph IRI"),
 ):
-    """
-    특정 Named Graph에 속한 Namespace 목록을 반환한다.
-
-    Args:
-        ds:    Fuseki dataset 명
-        graph: Named Graph IRI (query param)
-    """
     rows = sparql_query(ds, _Q_NS_IN_GRAPH.format(graph=graph))
+    declared = _get_declared_prefixes(ds, graph)
     return GraphNamespacesResponse(
         graph=graph,
-        namespaces=[_to_namespace(r["ns"]) for r in rows],
+        namespaces=[_to_namespace(r["ns"], declared) for r in rows],
     )
+
+
+@router.post("/{ds}/graphs/namespaces", response_model=NsDeclResponse, status_code=201)
+def post_namespace(ds: str, body: DeclareNsBody):
+    """새 namespace를 graph에 선언 (vann:preferredNamespacePrefix 트리플 삽입)."""
+    try:
+        result = ns_crud.declare_namespace(ds, body.graph, body.ns_iri, body.prefix)
+        return NsDeclResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.patch("/{ds}/graphs/namespaces", response_model=NsDeclResponse)
+def patch_namespace(ds: str, body: PatchNsBody):
+    """namespace prefix 선언 트리플을 교체한다."""
+    try:
+        result = ns_crud.update_prefix(ds, body.graph, body.ns_iri, body.prefix)
+        return NsDeclResponse(**result)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{ds}/graphs/namespaces/rename", response_model=RenameResponse)
+def post_rename_namespace(ds: str, body: RenameNsBody):
+    """graph 내에서 old_ns → new_ns IRI 일괄 치환."""
+    result = ns_crud.rename_namespace(ds, body.graph, body.old_ns, body.new_ns)
+    return RenameResponse(**result)
+
+
+@router.delete("/{ds}/graphs/namespaces", status_code=204)
+def delete_namespace(
+    ds: str,
+    graph: str = Query(...),
+    ns_iri: str = Query(...),
+):
+    """namespace 선언 + 해당 namespace의 모든 subject 트리플 삭제."""
+    try:
+        ns_crud.delete_namespace(ds, graph, ns_iri)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{ds}/namespaces/graphs", response_model=NamespaceGraphsResponse)
@@ -120,13 +223,6 @@ def get_graphs_for_namespace(
     ds: str,
     namespace: str = Query(..., description="Namespace base IRI"),
 ):
-    """
-    특정 Namespace(base IRI)가 포함된 Named Graph 목록을 반환한다.
-
-    Args:
-        ds:        Fuseki dataset 명
-        namespace: base IRI (query param)
-    """
     rows = sparql_query(ds, _Q_GRAPHS_FOR_NS.format(base_iri=namespace))
     return NamespaceGraphsResponse(
         namespace=namespace,
