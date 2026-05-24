@@ -9,6 +9,7 @@ import IndividualTable from './components/Individuals/IndividualTable'
 import SparqlEditor from './components/SparqlEditor/SparqlEditor'
 import ReasoningPanel from './components/Reasoning/ReasoningPanel'
 import ShaclPanel from './components/Shacl/ShaclPanel'
+import RulesPanel from './components/Rules/RulesPanel'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
@@ -64,6 +65,11 @@ const tabItems = [
     key: 'shacl',
     label: '🛡️ SHACL',
     children: <OOIGuard><ShaclPanel /></OOIGuard>,
+  },
+  {
+    key: 'rules',
+    label: '⚡ Rules',
+    children: <OOIGuard><RulesPanel /></OOIGuard>,
   },
 ]
 
