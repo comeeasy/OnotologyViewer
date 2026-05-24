@@ -123,3 +123,23 @@ export const deleteNamespace = async (
   const p = new URLSearchParams({ graph, ns_iri })
   await apiFetch<void>('DELETE', `/api/datasets/${ds}/graphs/namespaces?${p}`)
 }
+
+
+// ── v03-D Universal Namespace ────────────────────────────────────────────
+
+export interface UniversalNsItem {
+  prefix: string
+  ns_iri: string
+}
+
+export const listUniversalNamespaces = (): Promise<UniversalNsItem[]> =>
+  apiFetch<UniversalNsItem[]>('GET', '/api/namespaces/universal')
+
+export const importUniversalNs = (
+  dataset: string,
+  graph: string,
+  prefix: string,
+): Promise<{ ns_iri: string; prefix: string; graph: string }> =>
+  apiFetch<{ ns_iri: string; prefix: string; graph: string }>(
+    'POST', '/api/namespaces/universal/import', { dataset, graph, prefix },
+  )

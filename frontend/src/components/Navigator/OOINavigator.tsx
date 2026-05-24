@@ -10,9 +10,9 @@ import {
 import {
   checkHealth, createDataset, createGraph, deleteDataset, deleteGraph,
   getGraphDetail, patchGraph, getDatasets, getGraphs, getNamespacesInGraph,
-  declareNamespace,
+  declareNamespace, listUniversalNamespaces, importUniversalNs,
 } from '../../api/navigator'
-import type { GraphDetail } from '../../api/navigator'
+import type { GraphDetail, UniversalNsItem } from '../../api/navigator'
 import { useOOI } from '../../context/OOIContext'
 import type { Dataset, Namespace } from '../../types/ontology'
 import FusekiConfigModal from './FusekiConfigModal'
@@ -92,6 +92,11 @@ const OOINavigator: React.FC = () => {
   const [nsDeclForm] = Form.useForm()
   const [nsDeclaring, setNsDeclaring] = useState(false)
 
+  // v03-D: Universal NS import Modal
+  const [universalNsModalOpen, setUniversalNsModalOpen] = useState(false)
+  const [universalNsList, setUniversalNsList] = useState<UniversalNsItem[]>([])
+  const [importingNs, setImportingNs] = useState<string | null>(null)
+
   const handleDeclareNamespace = async () => {
     if (!selDataset || !selGraph) return
     const { ns_iri, prefix } = await nsDeclForm.validateFields()
@@ -106,6 +111,28 @@ const OOINavigator: React.FC = () => {
       message.error((e as Error).message)
     } finally {
       setNsDeclaring(false)
+    }
+  }
+
+  const handleOpenUniversalNsModal = async () => {
+    if (universalNsList.length === 0) {
+      const list = await listUniversalNamespaces()
+      setUniversalNsList(list)
+    }
+    setUniversalNsModalOpen(true)
+  }
+
+  const handleImportUniversalNs = async (prefix: string) => {
+    if (!selDataset || !selGraph) return
+    setImportingNs(prefix)
+    try {
+      await importUniversalNs(selDataset, selGraph, prefix)
+      message.success(`${prefix}: NS가 추가되었습니다.`)
+      reloadNamespaces()
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setImportingNs(null)
     }
   }
 
@@ -349,6 +376,14 @@ const OOINavigator: React.FC = () => {
                 onClick={() => { nsDeclForm.resetFields(); setNsDeclOpen(true) }}
               />
             </Tooltip>
+            <Tooltip title="Universal Namespace import">
+              <Button
+                size="small" type="text"
+                style={{ fontSize: 13 }}
+                disabled={!selGraph}
+                onClick={handleOpenUniversalNsModal}
+              >🌐</Button>
+            </Tooltip>
           </Space>
         </Space>
         {selGraph && customNamespaces.length === 0 && (
@@ -560,6 +595,43 @@ const OOINavigator: React.FC = () => {
           }}
         />
       )}
+
+      {/* v03-D: Universal Namespace import Modal */}
+      <Modal
+        title="🌐 Universal Namespace import"
+        open={universalNsModalOpen}
+        onCancel={() => setUniversalNsModalOpen(false)}
+        footer={null}
+        width={480}
+        destroyOnClose
+      >
+        {universalNsList.map((ns) => (
+          <div
+            key={ns.prefix}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '4px 0',
+              borderBottom: '1px solid #f0f0f0',
+            }}
+          >
+            <div>
+              <span style={{ fontWeight: 600, minWidth: 70, display: 'inline-block' }}>{ns.prefix}:</span>
+              <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#888' }}>{ns.ns_iri}</span>
+            </div>
+            <Button
+              size="small"
+              type="primary"
+              loading={importingNs === ns.prefix}
+              disabled={!selDataset || !selGraph}
+              onClick={() => handleImportUniversalNs(ns.prefix)}
+            >
+              Import
+            </Button>
+          </div>
+        ))}
+      </Modal>
     </Space>
   )
 }
