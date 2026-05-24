@@ -1,18 +1,19 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   Alert, Badge, Button, Descriptions, Divider, Form, Input,
-  Modal, Popconfirm, Select, Space, Tooltip, Typography, message,
+  Modal, Popconfirm, Radio, Select, Space, Tooltip, Typography, message,
 } from 'antd'
 import {
   CheckCircleOutlined, CloseCircleOutlined,
   DeleteOutlined, EditOutlined, LoadingOutlined, PlusOutlined, SettingOutlined,
+  UploadOutlined,
 } from '@ant-design/icons'
 import {
   checkHealth, createDataset, createGraph, deleteDataset, deleteGraph,
   getGraphDetail, patchGraph, getDatasets, getGraphs, getNamespacesInGraph,
-  declareNamespace, listUniversalNamespaces, importUniversalNs,
+  declareNamespace, listUniversalNamespaces, importUniversalNs, uploadTTL,
 } from '../../api/navigator'
-import type { GraphDetail, UniversalNsItem } from '../../api/navigator'
+import type { GraphDetail, UniversalNsItem, UploadTTLResponse } from '../../api/navigator'
 import { useOOI } from '../../context/OOIContext'
 import type { Dataset, Namespace } from '../../types/ontology'
 import FusekiConfigModal from './FusekiConfigModal'
@@ -97,6 +98,14 @@ const OOINavigator: React.FC = () => {
   const [universalNsList, setUniversalNsList] = useState<UniversalNsItem[]>([])
   const [importingNs, setImportingNs] = useState<string | null>(null)
 
+  // TTL 업로드
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [uploadMode, setUploadMode] = useState<'append' | 'replace'>('append')
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadLoading, setUploadLoading] = useState(false)
+  const [uploadResult, setUploadResult] = useState<UploadTTLResponse | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const handleDeclareNamespace = async () => {
     if (!selDataset || !selGraph) return
     const { ns_iri, prefix } = await nsDeclForm.validateFields()
@@ -120,6 +129,23 @@ const OOINavigator: React.FC = () => {
       setUniversalNsList(list)
     }
     setUniversalNsModalOpen(true)
+  }
+
+  const handleUploadTTL = async () => {
+    if (!selDataset || !selGraph || !uploadFile) return
+    setUploadLoading(true)
+    setUploadResult(null)
+    try {
+      const res = await uploadTTL(selDataset, selGraph, uploadFile, uploadMode)
+      setUploadResult(res)
+      message.success(res.message)
+      // 그래프 detail 갱신
+      getGraphDetail(selDataset, selGraph).then(setGraphDetail).catch(() => {})
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setUploadLoading(false)
+    }
   }
 
   const handleImportUniversalNs = async (prefix: string) => {
@@ -317,6 +343,18 @@ const OOINavigator: React.FC = () => {
                 size="small" type="text" icon={<SettingOutlined />}
                 disabled={!selGraph}
                 onClick={openEditGraph}
+              />
+            </Tooltip>
+            <Tooltip title="TTL 파일 업로드">
+              <Button
+                size="small" type="text" icon={<UploadOutlined />}
+                disabled={!selGraph}
+                onClick={() => {
+                  setUploadFile(null)
+                  setUploadResult(null)
+                  setUploadMode('append')
+                  setUploadModalOpen(true)
+                }}
               />
             </Tooltip>
             <Tooltip title="선택한 Graph 삭제">
@@ -631,6 +669,101 @@ const OOINavigator: React.FC = () => {
             </Button>
           </div>
         ))}
+      </Modal>
+      {/* TTL 업로드 Modal */}
+      <Modal
+        title="📥 TTL 파일 업로드"
+        open={uploadModalOpen}
+        onCancel={() => setUploadModalOpen(false)}
+        onOk={handleUploadTTL}
+        okText="업로드"
+        okButtonProps={{
+          disabled: !uploadFile,
+          loading: uploadLoading,
+        }}
+        cancelText="닫기"
+        destroyOnClose
+      >
+        <Space direction="vertical" style={{ width: '100%', marginTop: 12 }} size="middle">
+          {/* 대상 그래프 정보 */}
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>대상 Named Graph</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text code style={{ fontSize: 11, wordBreak: 'break-all' }}>{selGraph}</Text>
+            </div>
+          </div>
+
+          {/* 업로드 모드 */}
+          <div>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+              업로드 방식
+            </Text>
+            <Radio.Group
+              value={uploadMode}
+              onChange={(e) => setUploadMode(e.target.value)}
+            >
+              <Space direction="vertical" size={4}>
+                <Radio value="append">
+                  <Text>추가 (Append)</Text>
+                  <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                    기존 트리플에 새 트리플을 추가합니다
+                  </Text>
+                </Radio>
+                <Radio value="replace">
+                  <Text>교체 (Replace)</Text>
+                  <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                    기존 그래프를 완전히 대체합니다 (주의!)
+                  </Text>
+                </Radio>
+              </Space>
+            </Radio.Group>
+          </div>
+
+          {/* 파일 선택 */}
+          <div>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+              파일 선택 (.ttl, .nt, .n3)
+            </Text>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".ttl,.nt,.n3,text/turtle,application/n-triples,text/n3"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null
+                setUploadFile(f)
+                setUploadResult(null)
+              }}
+            />
+            <Space>
+              <Button
+                icon={<UploadOutlined />}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                파일 선택
+              </Button>
+              {uploadFile && (
+                <Text style={{ fontSize: 12 }}>
+                  {uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)
+                </Text>
+              )}
+            </Space>
+          </div>
+
+          {/* 업로드 결과 */}
+          {uploadResult && (
+            <Alert
+              type="success"
+              showIcon
+              message={uploadResult.message}
+              description={
+                <Text style={{ fontSize: 11 }}>
+                  그래프 총 트리플: {uploadResult.triple_count.toLocaleString()}개
+                </Text>
+              }
+            />
+          )}
+        </Space>
       </Modal>
     </Space>
   )

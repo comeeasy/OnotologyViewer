@@ -1,8 +1,10 @@
-"""Named Graph 목록 조회 + 생성 + 수정 + 삭제 + 상세 (v02-B)."""
+"""Named Graph 목록 조회 + 생성 + 수정 + 삭제 + 상세 + TTL 업로드 (v02-B)."""
 
-from fastapi import APIRouter, HTTPException, Query
+import httpx
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, field_validator
 
+import config_state
 from fuseki.sparql import query as sparql_query, update as sparql_update
 
 router = APIRouter(prefix="/api/datasets", tags=["graphs"])
@@ -181,3 +183,83 @@ def delete_graph(ds: str, graph: str):
         sparql_update(ds, _U_DROP_GRAPH.format(graph=graph))
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+class UploadResponse(BaseModel):
+    dataset: str
+    graph: str
+    mode: str
+    triple_count: int      # 업로드 후 해당 graph의 총 트리플 수
+    message: str
+
+
+@router.post("/{ds}/graphs/upload", response_model=UploadResponse)
+async def upload_ttl(
+    ds: str,
+    graph: str = Form(..., description="Named Graph IRI"),
+    mode: str = Form("append", description="append | replace"),
+    file: UploadFile = File(..., description="Turtle (.ttl) 파일"),
+):
+    """
+    TTL 파일을 Named Graph에 업로드한다.
+
+    - mode=append  : 기존 트리플에 추가 (GSP POST)
+    - mode=replace : 기존 그래프를 완전 교체 (GSP PUT)
+    """
+    if graph and not graph.startswith("http"):
+        raise HTTPException(422, "graph IRI는 http로 시작해야 합니다.")
+    if mode not in ("append", "replace"):
+        raise HTTPException(422, "mode는 'append' 또는 'replace'여야 합니다.")
+
+    content_type = file.content_type or "text/turtle"
+    # .ttl 확장자면 text/turtle 강제
+    if file.filename and file.filename.lower().endswith(".ttl"):
+        content_type = "text/turtle"
+    elif file.filename and file.filename.lower().endswith(".nt"):
+        content_type = "application/n-triples"
+    elif file.filename and file.filename.lower().endswith(".n3"):
+        content_type = "text/n3"
+
+    ttl_bytes = await file.read()
+    if not ttl_bytes:
+        raise HTTPException(422, "파일이 비어 있습니다.")
+
+    # Fuseki GSP endpoint
+    base = config_state.base_url()
+    gsp_url = f"{base}/{ds}/data"
+    user, pw = config_state.auth()
+    http_method = "PUT" if mode == "replace" else "POST"
+
+    async with httpx.AsyncClient(timeout=60.0, auth=(user, pw)) as client:
+        try:
+            resp = await client.request(
+                http_method,
+                gsp_url,
+                params={"graph": graph},
+                content=ttl_bytes,
+                headers={"Content-Type": content_type},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"Fuseki 업로드 실패: {e.response.text[:500]}",
+            )
+        except Exception as e:
+            raise HTTPException(500, f"업로드 중 오류: {e}")
+
+    # 업로드 후 triple count 조회
+    try:
+        rows = sparql_query(ds, _Q_GRAPH_EXISTS.format(graph=graph))
+        triple_count = int(rows[0].get("cnt", 0)) if rows else 0
+    except Exception:
+        triple_count = -1
+
+    action = "교체" if mode == "replace" else "추가"
+    return UploadResponse(
+        dataset=ds,
+        graph=graph,
+        mode=mode,
+        triple_count=triple_count,
+        message=f"업로드 완료 ({action}). 현재 그래프 트리플 수: {triple_count:,}개",
+    )

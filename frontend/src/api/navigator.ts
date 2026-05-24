@@ -143,3 +143,39 @@ export const importUniversalNs = (
   apiFetch<{ ns_iri: string; prefix: string; graph: string }>(
     'POST', '/api/namespaces/universal/import', { dataset, graph, prefix },
   )
+
+
+// ── TTL 파일 업로드 ─────────────────────────────────────────────────────────
+
+const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+
+export interface UploadTTLResponse {
+  dataset: string
+  graph: string
+  mode: string
+  triple_count: number
+  message: string
+}
+
+export const uploadTTL = async (
+  ds: string,
+  graph: string,
+  file: File,
+  mode: 'append' | 'replace' = 'append',
+): Promise<UploadTTLResponse> => {
+  const formData = new FormData()
+  formData.append('graph', graph)
+  formData.append('mode', mode)
+  formData.append('file', file)
+
+  const res = await fetch(`${BASE}/api/datasets/${ds}/graphs/upload`, {
+    method: 'POST',
+    body: formData,
+    // Content-Type은 브라우저가 multipart/form-data; boundary=... 자동 설정
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`)
+  }
+  return res.json() as Promise<UploadTTLResponse>
+}
