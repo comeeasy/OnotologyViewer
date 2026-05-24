@@ -27,6 +27,8 @@ const ClassDetailDrawer: React.FC<Props> = ({
   const [adding, setAdding] = useState(false)
 
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
+  const classLabel = (iri: string) =>
+    allClasses.find((c) => c.iri === iri)?.label ?? shortIRI(iri)
 
   const handleAddSuper = async () => {
     if (!dataset || !graph || !detail || !selParent) return
@@ -75,7 +77,7 @@ const ClassDetailDrawer: React.FC<Props> = ({
           {detail.super_classes.length === 0
             ? <Text type="secondary">없음</Text>
             : detail.super_classes.map((iri) => (
-                <Tag key={iri} title={iri}>{shortIRI(iri)}</Tag>
+                <Tag key={iri} title={iri}>{classLabel(iri)}</Tag>
               ))}
         </div>
       </div>
@@ -86,7 +88,7 @@ const ClassDetailDrawer: React.FC<Props> = ({
           {detail.sub_classes.length === 0
             ? <Text type="secondary">없음</Text>
             : detail.sub_classes.map((iri) => (
-                <Tag key={iri} title={iri}>{shortIRI(iri)}</Tag>
+                <Tag key={iri} title={iri}>{classLabel(iri)}</Tag>
               ))}
         </div>
       </div>
@@ -133,7 +135,7 @@ const ClassDetailDrawer: React.FC<Props> = ({
             : detail.super_classes.map((iri) => (
                 <Popconfirm
                   key={iri}
-                  title={`상위 Class 관계를 삭제합니까?\n${shortIRI(iri)}`}
+                  title={`상위 Class 관계를 삭제합니까?\n${classLabel(iri)}`}
                   onConfirm={() => handleRemoveSuper(iri)}
                   okText="삭제" okButtonProps={{ danger: true }}
                 >
@@ -143,7 +145,7 @@ const ClassDetailDrawer: React.FC<Props> = ({
                     style={{ cursor: 'pointer', marginBottom: 4 }}
                     title={iri}
                   >
-                    {shortIRI(iri)}
+                    {classLabel(iri)}
                   </Tag>
                 </Popconfirm>
               ))
@@ -194,7 +196,7 @@ const ClassDetailDrawer: React.FC<Props> = ({
             ? <Text type="secondary" style={{ fontSize: 12 }}>없음</Text>
             : detail.sub_classes.map((iri) => (
                 <Tag key={iri} color="cyan" title={iri} style={{ marginBottom: 4 }}>
-                  {shortIRI(iri)}
+                  {classLabel(iri)}
                 </Tag>
               ))
           }

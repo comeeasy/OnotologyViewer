@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Button, Popconfirm, Space, Table, Tooltip, Typography, message } from 'antd'
+import { Button, Popconfirm, Space, Table, message } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import {
   createObjProp, deleteObjProp, getObjProp, listObjProps, updateObjProp,
@@ -10,7 +10,6 @@ import type { ClassSummary, ObjPropDetail, ObjPropSummary } from '../../types/on
 import ObjPropDialog from './ObjPropDialog'
 import ObjPropDetailDrawer from './ObjPropDetail'
 
-const { Text } = Typography
 
 const ObjPropTable: React.FC = () => {
   const { dataset, graph, namespace } = useOOI()
@@ -122,23 +121,26 @@ const ObjPropTable: React.FC = () => {
   }
 
   const shortIRI = (iri: string | null) => iri?.split(/[#/]/).pop() ?? '-'
+  const classLabel = (iri: string | null) => {
+    if (!iri) return '-'
+    return classes.find((c) => c.iri === iri)?.label ?? shortIRI(iri)
+  }
 
   const columns = [
     {
-      title: 'Label',
+      title: 'Name',
       dataIndex: 'label',
-      render: (v: string | null) => v ?? <Text type="secondary">-</Text>,
-    },
-    { title: 'Domain', dataIndex: 'domain', render: shortIRI },
-    { title: 'Range', dataIndex: 'range', render: shortIRI },
-    {
-      title: 'IRI',
-      dataIndex: 'iri',
-      ellipsis: true,
-      render: (v: string) => (
-        <Tooltip title={v}><Text style={{ fontSize: 12 }}>{shortIRI(v)}</Text></Tooltip>
+      render: (v: string | null, row: ObjPropSummary) => (
+        <a
+          onClick={(e) => { e.stopPropagation(); openDetail(row) }}
+          style={{ fontWeight: 500 }}
+        >
+          {v ?? shortIRI(row.iri)}
+        </a>
       ),
     },
+    { title: 'Domain', dataIndex: 'domain', render: classLabel },
+    { title: 'Range', dataIndex: 'range', render: classLabel },
     {
       title: '작업',
       width: 80,

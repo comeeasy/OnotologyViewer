@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Button, Modal, Popconfirm, Space, Table, Tooltip, Typography, message } from 'antd'
+import { Button, Modal, Popconfirm, Space, Table, Typography, message } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { deleteClass, getClass, listClasses, createClass, updateClass } from '../../api/classes'
 import { useOOI } from '../../context/OOIContext'
@@ -133,25 +133,24 @@ const ClassTable: React.FC = () => {
 
   const columns = [
     {
-      title: 'Label',
+      title: 'Name',
       dataIndex: 'label',
-      render: (v: string | null) => v ?? <Text type="secondary">-</Text>,
+      render: (v: string | null, row: ClassSummary) => (
+        <a
+          onClick={(e) => { e.stopPropagation(); openDetail(row) }}
+          style={{ fontWeight: 500 }}
+        >
+          {v ?? shortIRI(row.iri)}
+        </a>
+      ),
     },
     {
       title: 'Comment',
       dataIndex: 'comment',
       ellipsis: true,
-      render: (v: string | null) => v ?? <Text type="secondary">-</Text>,
-    },
-    {
-      title: 'IRI',
-      dataIndex: 'iri',
-      ellipsis: true,
-      render: (v: string) => (
-        <Tooltip title={v}>
-          <Text style={{ fontSize: 12 }}>{shortIRI(v)}</Text>
-        </Tooltip>
-      ),
+      render: (v: string | null) => v
+        ? <Text type="secondary" style={{ fontSize: 12 }}>{v}</Text>
+        : <Text type="secondary">-</Text>,
     },
     {
       title: '작업',

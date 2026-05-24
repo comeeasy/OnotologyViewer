@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Button, Popconfirm, Space, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { Button, Popconfirm, Space, Table, Tag, message } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import {
   createDataProp, deleteDataProp, getDataProp, listDataProps, updateDataProp,
@@ -11,7 +11,6 @@ import type { ClassSummary, DataPropDetail, DataPropSummary } from '../../types/
 import DataPropDialog from './DataPropDialog'
 import DataPropDetailDrawer from './DataPropDetail'
 
-const { Text } = Typography
 
 const DataPropTable: React.FC = () => {
   const { dataset, graph, namespace } = useOOI()
@@ -116,26 +115,29 @@ const DataPropTable: React.FC = () => {
   }
 
   const shortIRI = (iri: string | null) => iri?.split(/[#/]/).pop() ?? '-'
+  const classLabel = (iri: string | null) => {
+    if (!iri) return '-'
+    return classes.find((c) => c.iri === iri)?.label ?? shortIRI(iri)
+  }
 
   const columns = [
     {
-      title: 'Label',
+      title: 'Name',
       dataIndex: 'label',
-      render: (v: string | null) => v ?? <Text type="secondary">-</Text>,
+      render: (v: string | null, row: DataPropSummary) => (
+        <a
+          onClick={(e) => { e.stopPropagation(); openDetail(row) }}
+          style={{ fontWeight: 500 }}
+        >
+          {v ?? shortIRI(row.iri)}
+        </a>
+      ),
     },
-    { title: 'Domain', dataIndex: 'domain', render: shortIRI },
+    { title: 'Domain', dataIndex: 'domain', render: classLabel },
     {
       title: 'Range',
       dataIndex: 'range',
       render: (v: string | null) => v ? <Tag>{xsdShortname(v)}</Tag> : '-',
-    },
-    {
-      title: 'IRI',
-      dataIndex: 'iri',
-      ellipsis: true,
-      render: (v: string) => (
-        <Tooltip title={v}><Text style={{ fontSize: 12 }}>{shortIRI(v)}</Text></Tooltip>
-      ),
     },
     {
       title: '작업',

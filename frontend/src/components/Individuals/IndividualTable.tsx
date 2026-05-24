@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Button, Popconfirm, Select, Space, Table, Tooltip, Typography, message } from 'antd'
+import { Button, Popconfirm, Select, Space, Table, message } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import {
   createIndividual, deleteIndividual, getIndividual, listIndividuals, updateIndividual,
@@ -16,7 +16,6 @@ import IndividualCreateDialog from './IndividualCreateDialog'
 import IndividualEditDialog from './IndividualEditDialog'
 import IndividualDetailDrawer from './IndividualDetail'
 
-const { Text } = Typography
 
 const IndividualTable: React.FC = () => {
   const { dataset, graph, namespace } = useOOI()
@@ -153,24 +152,27 @@ const IndividualTable: React.FC = () => {
   }
 
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
+  const classLabel = (iri: string) =>
+    classes.find((c) => c.iri === iri)?.label ?? shortIRI(iri)
 
   const columns = [
     {
-      title: 'Label',
+      title: 'Name',
       dataIndex: 'label',
-      render: (v: string | null) => v ?? <Text type="secondary">-</Text>,
+      render: (v: string | null, row: IndividualSummary) => (
+        <a
+          onClick={(e) => { e.stopPropagation(); openDetail(row) }}
+          style={{ fontWeight: 500 }}
+        >
+          {v ?? shortIRI(row.iri)}
+        </a>
+      ),
     },
     {
       title: 'Class',
       dataIndex: 'class_iri',
-      render: (v: string) => <Tooltip title={v}>{shortIRI(v)}</Tooltip>,
-    },
-    {
-      title: 'IRI',
-      dataIndex: 'iri',
-      ellipsis: true,
       render: (v: string) => (
-        <Tooltip title={v}><Text style={{ fontSize: 12 }}>{shortIRI(v)}</Text></Tooltip>
+        <span title={v} style={{ color: '#555' }}>{classLabel(v)}</span>
       ),
     },
     {
