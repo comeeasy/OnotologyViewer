@@ -197,6 +197,24 @@ def post_class_mapping(ds_iri: str, body: AddClassMappingBody):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/{iri:path}/preview", response_model=dict)
+def get_datasource_preview(
+    iri: str,
+    dataset: str = Query(...),
+    graph: str = Query(...),
+    limit: int = Query(10, ge=1, le=100),
+):
+    """Datasource 미리보기 (첫 N행 반환)."""
+    ds_iri = unquote(iri)
+    # strip '/preview' suffix if present
+    if ds_iri.endswith("/preview"):
+        ds_iri = ds_iri[: -len("/preview")]
+    try:
+        return ds_svc.preview_datasource(dataset, graph, ds_iri, limit)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("/{iri:path}", response_model=DatasourceDetail)
 def get_datasource(
     iri: str,

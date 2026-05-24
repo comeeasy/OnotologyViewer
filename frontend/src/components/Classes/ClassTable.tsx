@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Button, Modal, Popconfirm, Space, Table, Typography, message } from 'antd'
+import { Button, Modal, Radio, Select, Space, Table, Typography, message } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { deleteClass, getClass, listClasses, createClass, updateClass } from '../../api/classes'
 import { useOOI } from '../../context/OOIContext'
@@ -25,6 +25,14 @@ const ClassTable: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerDetail, setDrawerDetail] = useState<ClassDetail | null>(null)
   const [drawerLoading, setDrawerLoading] = useState(false)
+
+  // Delete Modal 상태 (individual 처리 옵션)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ClassSummary | null>(null)
+  const [deleteIndividualCount, setDeleteIndividualCount] = useState(0)
+  const [onIndividual, setOnIndividual] = useState<'delete' | 'migrate'>('delete')
+  const [migrateTarget, setMigrateTarget] = useState<string | undefined>(undefined)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const load = useCallback(async () => {
     if (!dataset || !graph || !namespace) return
@@ -77,33 +85,35 @@ const ClassTable: React.FC = () => {
   // ── Delete ──
   const handleDelete = async (row: ClassSummary) => {
     if (!dataset || !graph) return
-    // 삭제 전 individual_count 확인
     try {
       const detail = await getClass(dataset, graph, row.iri)
       if (detail.individual_count > 0) {
-        Modal.confirm({
-          title: 'Class 삭제',
-          content: `소속 Individual이 ${detail.individual_count}개 있습니다. 함께 삭제됩니다. 계속하시겠습니까?`,
-          okText: '삭제',
-          okButtonProps: { danger: true },
-          onOk: () => doDelete(row.iri),
-        })
+        // Individual 처리 방법 선택 모달 표시
+        setDeleteTarget(row)
+        setDeleteIndividualCount(detail.individual_count)
+        setOnIndividual('delete')
+        setMigrateTarget(undefined)
+        setDeleteModalOpen(true)
       } else {
-        await doDelete(row.iri)
+        await doDelete(row.iri, 'delete', undefined)
       }
     } catch (e: unknown) {
       message.error((e as Error).message)
     }
   }
 
-  const doDelete = async (iri: string) => {
+  const doDelete = async (iri: string, how: 'delete' | 'migrate', target?: string) => {
     if (!dataset || !graph) return
+    setDeleteLoading(true)
     try {
-      await deleteClass(dataset, graph, iri)
+      await deleteClass(dataset, graph, iri, how, target)
       message.success('Class가 삭제되었습니다.')
+      setDeleteModalOpen(false)
       load()
     } catch (e: unknown) {
       message.error((e as Error).message)
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -162,24 +172,20 @@ const ClassTable: React.FC = () => {
             icon={<EditOutlined />}
             onClick={(e) => { e.stopPropagation(); openEdit(row) }}
           />
-          <Popconfirm
-            title="삭제하시겠습니까?"
-            onConfirm={(e) => { e?.stopPropagation(); handleDelete(row) }}
-            onCancel={(e) => e?.stopPropagation()}
-            okText="삭제"
-            okButtonProps={{ danger: true }}
-          >
-            <Button
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={(e) => e.stopPropagation()}
-            />
-          </Popconfirm>
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={(e) => { e.stopPropagation(); handleDelete(row) }}
+          />
         </Space>
       ),
     },
   ]
+
+  const migrateOptions = rows
+    .filter((r) => r.iri !== deleteTarget?.iri)
+    .map((r) => ({ label: r.label ?? shortIRI(r.iri), value: r.iri }))
 
   return (
     <>
@@ -198,6 +204,46 @@ const ClassTable: React.FC = () => {
         onRow={(row) => ({ onClick: () => openDetail(row), style: { cursor: 'pointer' } })}
         pagination={{ pageSize: 20, showSizeChanger: false }}
       />
+
+      {/* Individual 처리 방법 선택 Modal */}
+      <Modal
+        title="Class 삭제"
+        open={deleteModalOpen}
+        onCancel={() => setDeleteModalOpen(false)}
+        onOk={() => doDelete(deleteTarget!.iri, onIndividual, migrateTarget)}
+        okText="삭제"
+        okButtonProps={{ danger: true, disabled: onIndividual === 'migrate' && !migrateTarget, loading: deleteLoading }}
+        cancelText="취소"
+      >
+        <Text>
+          소속 Individual이 <Text strong>{deleteIndividualCount}개</Text> 있습니다.
+          삭제 전에 처리 방법을 선택하세요.
+        </Text>
+        <div style={{ marginTop: 16 }}>
+          <Radio.Group
+            value={onIndividual}
+            onChange={(e) => { setOnIndividual(e.target.value); setMigrateTarget(undefined) }}
+          >
+            <Space direction="vertical">
+              <Radio value="delete">Individual 함께 삭제</Radio>
+              <Radio value="migrate">다른 Class로 이동</Radio>
+            </Space>
+          </Radio.Group>
+          {onIndividual === 'migrate' && (
+            <Select
+              style={{ width: '100%', marginTop: 8 }}
+              placeholder="이동할 Class 선택"
+              options={migrateOptions}
+              value={migrateTarget}
+              onChange={setMigrateTarget}
+              showSearch
+              filterOption={(input, opt) =>
+                (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
+          )}
+        </div>
+      </Modal>
 
       <ClassDialog
         open={dialogOpen}

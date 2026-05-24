@@ -1,8 +1,9 @@
 # OntologyViewer — 구현 계획 v02
 
-**Date:** 2026-05-24  
+**Date:** 2026-05-25 (updated)  
 **Scope:** 관리 기능 + 고급 TBox + Reasoning  
-**Prerequisite:** v01 완료 (Backend ✅ · Frontend ✅)
+**Prerequisite:** v01 완료 (Backend ✅ · Frontend ✅)  
+**Status:** ✅ Backend + Frontend 모두 완료 (190/190 통합 테스트 통과)
 
 ---
 
@@ -86,9 +87,9 @@ UI에서 변경할 수 없어 Docker Compose 외 환경에서는 설정 불편.
 ```
 
 ### 성공 기준
-- [ ] Dataset을 생성하면 Fuseki에 TDB2 dataset이 등록된다
-- [ ] Dataset 삭제 시 포함 데이터 현황이 표시된다
-- [ ] 삭제 후 Navigator Dataset 목록에서 제거된다
+- [x] Dataset을 생성하면 Fuseki에 TDB2 dataset이 등록된다
+- [x] Dataset 삭제 시 포함 데이터 현황이 표시된다
+- [x] 삭제 후 Navigator Dataset 목록에서 제거된다
 
 ---
 
@@ -106,8 +107,8 @@ UI에서 변경할 수 없어 Docker Compose 외 환경에서는 설정 불편.
 | 트리플 수 조회 | `GET /api/datasets/{ds}/graphs?graph=` | `SELECT (COUNT(*) AS ?n) WHERE { GRAPH <g> { ?s ?p ?o } }` |
 
 ### 성공 기준
-- [ ] Named Graph의 label/comment를 수정할 수 있다
-- [ ] Navigator에서 Named Graph의 트리플 수가 표시된다
+- [x] Named Graph의 label/comment를 수정할 수 있다
+- [x] Navigator에서 Named Graph의 트리플 수가 표시된다
 
 ---
 
@@ -141,9 +142,9 @@ SELECT ?s WHERE {
 > ⚠️ IRI 치환은 되돌릴 수 없음. 실행 전 그래프 export(TTL) 다운로드 권장.
 
 ### 성공 기준
-- [ ] Namespace prefix를 수정할 수 있다
-- [ ] base IRI 변경 시 영향받는 트리플 수가 미리 표시된다
-- [ ] IRI 치환 후 모든 triple이 새 namespace로 갱신된다
+- [x] Namespace prefix를 수정할 수 있다
+- [x] base IRI 변경 시 영향받는 트리플 수가 미리 표시된다
+- [x] IRI 치환 후 모든 triple이 새 namespace로 갱신된다
 
 ---
 
@@ -164,9 +165,9 @@ ClassDetail Drawer에서 super_classes / sub_classes를 Tag로 표시 (읽기 �
 - 상위 Class 삭제: 각 항목 옆 ✕ 버튼
 
 ### 성공 기준
-- [ ] subClassOf 관계를 추가/삭제할 수 있다
-- [ ] 순환 참조(A subClassOf B, B subClassOf A) 방지 검사
-- [ ] ClassDetail에서 변경 결과가 즉시 반영된다
+- [x] subClassOf 관계를 추가/삭제할 수 있다
+- [x] 순환 참조(A subClassOf B, B subClassOf A) 방지 검사
+- [x] ClassDetail에서 변경 결과가 즉시 반영된다
 
 ---
 
@@ -195,9 +196,9 @@ body: { dataset, graph, new_class_iri, incompatible_props: "keep" | "delete" }
 ```
 
 ### 성공 기준
-- [ ] Individual의 Class를 다른 Class로 변경할 수 있다
-- [ ] 비호환 Property 처리 옵션이 표시된다
-- [ ] 마이그레이션 후 Individual 상세에 새 Class가 반영된다
+- [x] Individual의 Class를 다른 Class로 변경할 수 있다
+- [x] 비호환 Property 처리 옵션이 표시된다
+- [x] 마이그레이션 후 Individual 상세에 새 Class가 반영된다
 
 ---
 
@@ -228,10 +229,10 @@ SELECT ?s ?p ?o WHERE { GRAPH <{ooi_graph}> { ?s ?p ?o } }
 - 쿼리 히스토리 (localStorage 최근 10개)
 
 ### 성공 기준
-- [ ] SELECT 결과가 Table로 표시된다
-- [ ] ASK 결과가 true/false로 표시된다
-- [ ] UPDATE 실행 후 성공 여부가 표시된다
-- [ ] OOI Named Graph가 자동으로 적용된다
+- [x] SELECT 결과가 Table로 표시된다
+- [x] ASK 결과가 true/false로 표시된다
+- [x] UPDATE 실행 후 성공 여부가 표시된다
+- [x] OOI Named Graph가 자동으로 적용된다
 
 ---
 
@@ -265,10 +266,10 @@ Jena Reasoner를 이용해 추론을 실행하고, 결과(추론된 트리플)�
 - Fuseki에서 TTL export → pyoxigraph 추론 → 결과 트리플 반환
 
 ### 성공 기준
-- [ ] Reasoner를 선택하고 추론을 실행할 수 있다
-- [ ] 추론된 트리플이 미리보기로 표시된다
-- [ ] Materialization 후 추론 결과가 Fuseki에 저장된다
-- [ ] 일관성 검사(Consistency Check) 결과가 표시된다
+- [x] Reasoner를 선택하고 추론을 실행할 수 있다
+- [x] 추론된 트리플이 미리보기로 표시된다
+- [x] Materialization 후 추론 결과가 Fuseki에 저장된다
+- [x] 일관성 검사(Consistency Check) 결과가 표시된다
 
 ---
 
@@ -301,8 +302,8 @@ DELETE /api/tbox/object-properties/{iri}/inverse    ?dataset&graph&inverse_iri=
 - 현재 inverseOf 관계 표시 + 추가/삭제
 
 ### 성공 기준
-- [ ] Object Property에 inverseOf 관계를 추가/삭제할 수 있다
-- [ ] ObjPropDetail에서 inverseOf 관계가 표시된다
+- [x] Object Property에 inverseOf 관계를 추가/삭제할 수 있다
+- [x] ObjPropDetail에서 inverseOf 관계가 표시된다
 
 ---
 

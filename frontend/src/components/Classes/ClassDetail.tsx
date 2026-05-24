@@ -1,11 +1,17 @@
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
-  Button, Descriptions, Divider, Drawer, Popconfirm, Select,
+  Alert, Button, Descriptions, Divider, Drawer, List, Popconfirm, Select,
   Space, Spin, Table, Tabs, Tag, Typography, message,
 } from 'antd'
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ClassDetail as IClassDetail, ClassSummary } from '../../types/ontology'
 import { addSuperClass, removeSuperClass } from '../../api/classes'
+import { listShapes } from '../../api/shacl'
+import type { NodeShapeSummary } from '../../api/shacl'
+import { listRules } from '../../api/rules'
+import type { RuleSummary } from '../../api/rules'
+import { listDatasources } from '../../api/datasources'
+import type { DatasourceSummary } from '../../api/datasources'
 import { useOOI } from '../../context/OOIContext'
 
 const { Text } = Typography
@@ -25,6 +31,50 @@ const ClassDetailDrawer: React.FC<Props> = ({
   const { dataset, graph } = useOOI()
   const [selParent, setSelParent] = useState<string | undefined>(undefined)
   const [adding, setAdding] = useState(false)
+
+  // SHACL / Rule / Datasource 탭 데이터 (lazy load on tab switch)
+  const [shaclShapes, setShaclShapes] = useState<NodeShapeSummary[]>([])
+  const [shaclLoading, setShaclLoading] = useState(false)
+  const [rules, setRules] = useState<RuleSummary[]>([])
+  const [rulesLoading, setRulesLoading] = useState(false)
+  const [datasources, setDatasources] = useState<DatasourceSummary[]>([])
+  const [dsLoading, setDsLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('info')
+
+  const loadShaclShapes = useCallback(async () => {
+    if (!dataset || !graph || !detail) return
+    setShaclLoading(true)
+    try {
+      const all = await listShapes(dataset, graph)
+      setShaclShapes(all.filter((s) => s.target_class === detail.iri))
+    } catch { /* 무시 */ }
+    finally { setShaclLoading(false) }
+  }, [dataset, graph, detail])
+
+  const loadRules = useCallback(async () => {
+    if (!dataset || !graph) return
+    setRulesLoading(true)
+    try {
+      setRules(await listRules(dataset, graph))
+    } catch { /* 무시 */ }
+    finally { setRulesLoading(false) }
+  }, [dataset, graph])
+
+  const loadDatasources = useCallback(async () => {
+    if (!dataset || !graph) return
+    setDsLoading(true)
+    try {
+      setDatasources(await listDatasources(dataset, graph))
+    } catch { /* 무시 */ }
+    finally { setDsLoading(false) }
+  }, [dataset, graph])
+
+  useEffect(() => {
+    if (!open) { setActiveTab('info'); return }
+    if (activeTab === 'shacl') loadShaclShapes()
+    else if (activeTab === 'rules') loadRules()
+    else if (activeTab === 'datasources') loadDatasources()
+  }, [activeTab, open, loadShaclShapes, loadRules, loadDatasources])
 
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
   const classLabel = (iri: string) =>
@@ -205,14 +255,94 @@ const ClassDetailDrawer: React.FC<Props> = ({
     </Space>
   )
 
+  // ── SHACL 탭 ─────────────────────────────────────────────────────────────
+  const shaclTab = (
+    <Spin spinning={shaclLoading}>
+      {shaclShapes.length === 0 && !shaclLoading
+        ? <Alert type="info" showIcon message="이 Class에 적용된 SHACL Shape 없음" />
+        : (
+          <List
+            size="small"
+            dataSource={shaclShapes}
+            renderItem={(s) => (
+              <List.Item>
+                <Space>
+                  <Tag color="purple">NodeShape</Tag>
+                  <Text style={{ fontSize: 12 }}>{s.label ?? shortIRI(s.shape_iri)}</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }} title={s.shape_iri}>
+                    {shortIRI(s.shape_iri)}
+                  </Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        )
+      }
+    </Spin>
+  )
+
+  // ── Rule 탭 ──────────────────────────────────────────────────────────────
+  const rulesTab = (
+    <Spin spinning={rulesLoading}>
+      {rules.length === 0 && !rulesLoading
+        ? <Alert type="info" showIcon message="등록된 Rule 없음" />
+        : (
+          <List
+            size="small"
+            dataSource={rules}
+            renderItem={(r) => (
+              <List.Item>
+                <Space direction="vertical" style={{ width: '100%' }} size={2}>
+                  <Text style={{ fontSize: 12, fontWeight: 500 }}>{r.label ?? shortIRI(r.rule_iri)}</Text>
+                  {r.description && (
+                    <Text type="secondary" style={{ fontSize: 11 }}>{r.description}</Text>
+                  )}
+                </Space>
+              </List.Item>
+            )}
+          />
+        )
+      }
+    </Spin>
+  )
+
+  // ── Datasource 탭 ─────────────────────────────────────────────────────────
+  const datasourceTab = (
+    <Spin spinning={dsLoading}>
+      {datasources.length === 0 && !dsLoading
+        ? <Alert type="info" showIcon message="등록된 Datasource 없음" />
+        : (
+          <List
+            size="small"
+            dataSource={datasources}
+            renderItem={(ds) => (
+              <List.Item>
+                <Space>
+                  <Tag color="geekblue">{ds.ds_type.toUpperCase()}</Tag>
+                  <Text style={{ fontSize: 12 }}>{ds.label ?? shortIRI(ds.datasource_iri)}</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>{ds.connection_info}</Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        )
+      }
+    </Spin>
+  )
+
   return (
     <Drawer title="Class 상세" width={500} open={open} onClose={onClose}>
       {loading && <Spin />}
       {!loading && detail && (
         <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
           items={[
             { key: 'info', label: '정보', children: infoTab },
             { key: 'hierarchy', label: '계층 편집', children: hierarchyTab },
+            { key: 'shacl', label: 'SHACL', children: shaclTab },
+            { key: 'rules', label: 'Rules', children: rulesTab },
+            { key: 'datasources', label: 'Datasource', children: datasourceTab },
           ]}
         />
       )}

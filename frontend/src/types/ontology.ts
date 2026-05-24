@@ -104,6 +104,7 @@ export interface OutgoingRelation {
   property: string
   value: string
   value_type: 'iri' | 'literal'
+  datatype: string | null
 }
 
 export interface IncomingRelation {

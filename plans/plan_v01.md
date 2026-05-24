@@ -1,10 +1,11 @@
 # OntologyViewer — 구현 계획 v01
 
-**Date:** 2026-05-24  
+**Date:** 2026-05-25 (updated)  
 **Scope:** 핵심 기능 3개 (MVP)  
 **Backend:** Python (FastAPI) + Apache Jena Fuseki  
-**Frontend:** 백엔드 완성 후 별도 진행  
-**Spec 참조:** `wiki/queries/ontology-viewer-spec.md`
+**Frontend:** ✅ 완료  
+**Spec 참조:** `wiki/queries/ontology-viewer-spec.md`  
+**Status:** ✅ Backend + Frontend 모두 완료 (190/190 통합 테스트 통과)
 
 ---
 
@@ -143,11 +144,11 @@ SELECT DISTINCT ?g WHERE {
 ```
 
 ### 성공 기준
-- [ ] Fuseki endpoint에 연결하면 Dataset 목록이 표시된다
-- [ ] Named Graph를 선택하면 해당 그래프의 Namespace 목록이 표시된다
-- [ ] Custom / Universal Namespace가 구분되어 표시된다
-- [ ] Named Graph + Namespace를 선택하면 OOI가 고정된다
-- [ ] 선택된 OOI가 F2, F3 작업 전반에 컨텍스트로 유지된다
+- [x] Fuseki endpoint에 연결하면 Dataset 목록이 표시된다
+- [x] Named Graph를 선택하면 해당 그래프의 Namespace 목록이 표시된다
+- [x] Custom / Universal Namespace가 구분되어 표시된다
+- [x] Named Graph + Namespace를 선택하면 OOI가 고정된다
+- [x] 선택된 OOI가 F2, F3 작업 전반에 컨텍스트로 유지된다
 
 ---
 
@@ -235,11 +236,11 @@ DELETE DATA {
 ```
 
 ### 성공 기준
-- [ ] OOI 범위 안의 Class 목록이 조회된다
-- [ ] Class를 생성하면 Fuseki에 owl:Class 트리플이 저장된다
-- [ ] Class를 삭제하면 3단계 절차가 순서대로 실행된다
-- [ ] Object Property 생성 시 domain / range / characteristics가 저장된다
-- [ ] Data Property 생성 시 xsd datatype range가 저장된다
+- [x] OOI 범위 안의 Class 목록이 조회된다
+- [x] Class를 생성하면 Fuseki에 owl:Class 트리플이 저장된다
+- [x] Class를 삭제하면 3단계 절차가 순서대로 실행된다 (Individual delete or migrate 옵션 포함)
+- [x] Object Property 생성 시 domain / range / characteristics가 저장된다
+- [x] Data Property 생성 시 xsd datatype range가 저장된다
 
 ---
 
@@ -301,10 +302,10 @@ DELETE WHERE { GRAPH <{namedGraphIRI}> { ?s ?p <{indIRI}> } }
 ```
 
 ### 성공 기준
-- [ ] Class를 선택하면 소속 Individual 목록이 조회된다
-- [ ] Individual 생성 시 data property 값이 함께 저장된다
-- [ ] Individual 조회 시 outgoing + incoming object property 관계가 모두 표시된다
-- [ ] Individual 삭제 시 관계 트리플이 먼저 제거된 후 선언이 삭제된다
+- [x] Class를 선택하면 소속 Individual 목록이 조회된다
+- [x] Individual 생성 시 data property 값이 함께 저장된다
+- [x] Individual 조회 시 outgoing + incoming object property 관계가 모두 표시된다 (datatype 포함)
+- [x] Individual 삭제 시 관계 트리플이 먼저 제거된 후 선언이 삭제된다
 
 ---
 

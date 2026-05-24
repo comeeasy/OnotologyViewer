@@ -403,6 +403,80 @@ def delete_class_mapping(
     return {"deleted": mapping_iri}
 
 
+def preview_datasource(dataset: str, graph: str, ds_iri: str, limit: int = 10) -> dict:
+    """
+    Datasource 미리보기.
+
+    - csv/json/rest: httpx로 URL 접근 후 첫 N행 반환
+    - sparql: SPARQL 쿼리 실행 후 결과 반환
+    - 접근 불가 시 error 필드 반환
+
+    Returns:
+        {"type": ..., "connection_info": ..., "rows": [...], "error": None | str}
+    """
+    info = get_datasource(dataset, graph, ds_iri)
+    ds_type = info["ds_type"]
+    conn = info["connection_info"]
+
+    result: dict = {
+        "datasource_iri": ds_iri,
+        "label": info.get("label"),
+        "type": ds_type,
+        "connection_info": conn,
+        "rows": [],
+        "error": None,
+    }
+
+    try:
+        import httpx  # 런타임 import — 선택적 의존성
+
+        if ds_type in ("csv",):
+            resp = httpx.get(conn, timeout=5, follow_redirects=True)
+            resp.raise_for_status()
+            lines = resp.text.splitlines()
+            result["rows"] = [l for l in lines[:limit + 1]]  # 헤더 포함
+
+        elif ds_type in ("json",):
+            resp = httpx.get(conn, timeout=5, follow_redirects=True)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list):
+                result["rows"] = data[:limit]
+            elif isinstance(data, dict):
+                # 첫 번째 리스트 값 사용
+                for v in data.values():
+                    if isinstance(v, list):
+                        result["rows"] = v[:limit]
+                        break
+                else:
+                    result["rows"] = [data]
+            else:
+                result["rows"] = [str(data)]
+
+        elif ds_type in ("rest",):
+            resp = httpx.get(conn, timeout=5, follow_redirects=True)
+            resp.raise_for_status()
+            text = resp.text[:2000]  # 2000자 제한
+            result["rows"] = [text]
+
+        elif ds_type == "sparql":
+            # conn은 SPARQL endpoint URL — 직접 쿼리 실행
+            from SPARQLWrapper import SPARQLWrapper, JSON as SPARQL_JSON
+            sw = SPARQLWrapper(conn)
+            sw.setQuery(f"SELECT * WHERE {{ ?s ?p ?o }} LIMIT {limit}")
+            sw.setReturnFormat(SPARQL_JSON)
+            res = sw.query().convert()
+            bindings = res.get("results", {}).get("bindings", [])
+            result["rows"] = [{k: v["value"] for k, v in row.items()} for row in bindings]
+
+    except ImportError:
+        result["error"] = "httpx not installed — preview unavailable"
+    except Exception as exc:
+        result["error"] = str(exc)
+
+    return result
+
+
 def add_property_mapping(
     dataset: str,
     graph: str,

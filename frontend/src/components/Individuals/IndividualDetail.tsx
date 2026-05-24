@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import { Button, Descriptions, Drawer, Space, Spin, Table, Tag, Typography } from 'antd'
-import { SwapOutlined } from '@ant-design/icons'
+import { Alert, Button, Descriptions, Divider, Drawer, Space, Spin, Table, Tag, Typography, message } from 'antd'
+import { CheckCircleOutlined, CloseCircleOutlined, SafetyCertificateOutlined, SwapOutlined } from '@ant-design/icons'
 import type { IndividualDetail as IIndividualDetail } from '../../types/ontology'
+import { validateIndividual } from '../../api/shacl'
+import type { ViolationItem } from '../../api/shacl'
 import ClassMigrateModal from './ClassMigrateModal'
 
 const { Text } = Typography
@@ -23,6 +25,27 @@ const IndividualDetail: React.FC<Props> = ({
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
 
   const [migrateOpen, setMigrateOpen] = useState(false)
+
+  // SHACL 검증
+  const [shaclLoading, setShaclLoading] = useState(false)
+  const [shaclResult, setShaclResult] = useState<{
+    conforms: boolean
+    violations: ViolationItem[]
+  } | null>(null)
+
+  const handleShaclValidate = async () => {
+    if (!detail) return
+    setShaclLoading(true)
+    setShaclResult(null)
+    try {
+      const res = await validateIndividual(dataset, graph, detail.iri)
+      setShaclResult({ conforms: res.conforms, violations: res.violations ?? [] })
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setShaclLoading(false)
+    }
+  }
 
   return (
     <Drawer title="Individual 상세" width={520} open={open} onClose={onClose}>
@@ -102,6 +125,57 @@ const IndividualDetail: React.FC<Props> = ({
                 },
               ]}
             />
+          </div>
+
+          {/* SHACL 검증 */}
+          <Divider style={{ margin: '8px 0' }} />
+          <div>
+            <Space style={{ marginBottom: 8 }}>
+              <Text strong>SHACL 검증</Text>
+              <Button
+                size="small"
+                icon={<SafetyCertificateOutlined />}
+                loading={shaclLoading}
+                onClick={handleShaclValidate}
+              >
+                검증 실행
+              </Button>
+            </Space>
+            {shaclResult && (
+              shaclResult.conforms ? (
+                <Alert
+                  type="success"
+                  showIcon
+                  icon={<CheckCircleOutlined />}
+                  message="SHACL 검증 통과 — 위반 없음"
+                />
+              ) : (
+                <>
+                  <Alert
+                    type="error"
+                    showIcon
+                    icon={<CloseCircleOutlined />}
+                    message={`위반 ${shaclResult.violations.length}건 발견`}
+                    style={{ marginBottom: 6 }}
+                  />
+                  {shaclResult.violations.map((v, i) => (
+                    <Alert
+                      key={i}
+                      type="warning"
+                      style={{ marginBottom: 4, fontSize: 11 }}
+                      message={v.message || '위반'}
+                      description={
+                        v.result_path
+                          ? <Text style={{ fontSize: 11 }} type="secondary">
+                              path: {shortIRI(v.result_path)}
+                            </Text>
+                          : undefined
+                      }
+                    />
+                  ))}
+                </>
+              )
+            )}
           </div>
 
           {/* v02-E: Class 마이그레이션 Modal */}

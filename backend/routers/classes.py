@@ -207,21 +207,22 @@ def delete_super_class(
 
 @router.delete("/{iri:path}", status_code=204)
 def delete_class_endpoint(
-    iri:            str,
-    dataset:        str = Query(...),
-    graph:          str = Query(...),
-    on_individual:  str = Query("delete", description="delete | migrate (migrate는 v02)"),
+    iri:                str,
+    dataset:            str = Query(...),
+    graph:              str = Query(...),
+    on_individual:      str = Query("delete", description="delete | migrate"),
+    target_class_iri:   str | None = Query(None, description="migrate 시 대상 Class IRI"),
 ):
     """
     Class를 삭제한다 (3단계).
 
-    1. 소속 Individual 처리 (on_individual=delete)
+    1. 소속 Individual 처리 (on_individual=delete → 삭제 / migrate → target_class_iri로 이동)
     2. domain/range 참조 제거
     3. Class 선언 삭제
     """
     class_iri = unquote(iri)
     try:
-        delete_class(dataset, graph, class_iri, on_individual)
+        delete_class(dataset, graph, class_iri, on_individual, target_class_iri)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except NotImplementedError as e:

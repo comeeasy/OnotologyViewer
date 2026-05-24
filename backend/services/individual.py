@@ -1,6 +1,6 @@
 """Individual (ABox) CRUD 서비스 — SPARQL 기반."""
 
-from fuseki.sparql import query as sparql_query, update as sparql_update
+from fuseki.sparql import query as sparql_query, query_with_types, update as sparql_update
 from services.iri import generate_iri
 from services.class_ import _esc, _validate_iri
 
@@ -179,15 +179,21 @@ def get_individual_detail(dataset: str, graph: str, ind_iri: str) -> dict | None
         return None
     r = base[0]
 
-    out_rows = sparql_query(dataset, _Q_OUTGOING.format(graph=graph, ind_iri=ind_iri))
-    outgoing = [
-        {
-            "property":  row["prop"],
-            "value":     row["value"],
-            "value_type": "iri" if row["value"].startswith("http") else "literal",
-        }
-        for row in out_rows
-    ]
+    out_rows_raw = query_with_types(dataset, _Q_OUTGOING.format(graph=graph, ind_iri=ind_iri))
+    outgoing = []
+    for row in out_rows_raw:
+        prop = row["prop"]["value"]
+        val_binding = row["value"]
+        val_type = val_binding.get("type", "")
+        val_value = val_binding["value"]
+        if val_type == "uri":
+            outgoing.append({"property": prop, "value": val_value, "value_type": "iri", "datatype": None})
+        else:
+            # literal or typed-literal
+            raw_dt = val_binding.get("datatype", "http://www.w3.org/2001/XMLSchema#string")
+            # shortname 변환: .../XMLSchema#integer → integer
+            dt_short = raw_dt.split("#")[-1] if "#" in raw_dt else raw_dt.split("/")[-1]
+            outgoing.append({"property": prop, "value": val_value, "value_type": "literal", "datatype": dt_short})
 
     in_rows = sparql_query(dataset, _Q_INCOMING.format(graph=graph, ind_iri=ind_iri))
     incoming = [{"subject": row["subj"], "property": row["prop"]} for row in in_rows]

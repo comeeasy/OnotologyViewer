@@ -386,25 +386,52 @@ def remove_super_class(dataset: str, graph: str, child_iri: str, parent_iri: str
     sparql_update(dataset, _U_DEL_SUBCLASSOF.format(graph=graph, child=child_iri, parent=parent_iri))
 
 
-def delete_class(dataset: str, graph: str, class_iri: str, on_individual: str = "delete") -> None:
+_U_MIGRATE_IND_TYPE = """
+DELETE {{ GRAPH <{graph}> {{ ?ind a <{old_class}> }} }}
+INSERT {{ GRAPH <{graph}> {{ ?ind a <{new_class}> }} }}
+WHERE  {{ GRAPH <{graph}> {{ ?ind a <{old_class}> }} }}
+"""
+
+
+def delete_class(
+    dataset: str,
+    graph: str,
+    class_iri: str,
+    on_individual: str = "delete",
+    target_class_iri: str | None = None,
+) -> None:
     """
     Class 삭제 (3단계).
 
     on_individual:
-      "delete" — 소속 Individual 및 관련 트리플 모두 삭제
+      "delete"  — 소속 Individual 및 관련 트리플 모두 삭제
+      "migrate" — 소속 Individual의 rdf:type을 target_class_iri로 변경 후 Class 삭제
+                  (target_class_iri 필수)
     """
     _validate_iri(graph)
     _validate_iri(class_iri)
 
-    if on_individual != "delete":
-        raise NotImplementedError(f"on_individual='{on_individual}' 은 v02에서 지원됩니다.")
-
     fmt = dict(graph=graph, class_iri=class_iri)
 
-    # 1a) Individual 인커밍 트리플 먼저 삭제 (rdf:type 삭제 전에)
-    sparql_update(dataset, _U_DEL_IND_INCOMING.format(**fmt))
-    # 1b) Individual 아웃고잉 트리플 삭제 (rdf:type 포함)
-    sparql_update(dataset, _U_DEL_IND_OUTGOING.format(**fmt))
+    if on_individual == "migrate":
+        if not target_class_iri:
+            raise ValueError("migrate 옵션에는 target_class_iri가 필요합니다.")
+        _validate_iri(target_class_iri)
+        # Individual rdf:type 교체
+        sparql_update(
+            dataset,
+            _U_MIGRATE_IND_TYPE.format(
+                graph=graph, old_class=class_iri, new_class=target_class_iri
+            ),
+        )
+    elif on_individual == "delete":
+        # 1a) Individual 인커밍 트리플 먼저 삭제 (rdf:type 삭제 전에)
+        sparql_update(dataset, _U_DEL_IND_INCOMING.format(**fmt))
+        # 1b) Individual 아웃고잉 트리플 삭제 (rdf:type 포함)
+        sparql_update(dataset, _U_DEL_IND_OUTGOING.format(**fmt))
+    else:
+        raise ValueError(f"on_individual 값이 잘못됐습니다: {on_individual!r} (delete | migrate)")
+
     # 2) domain / range 참조 제거
     sparql_update(dataset, _U_DEL_DOMAIN_RANGE.format(**fmt))
     # 3) Class 선언 삭제

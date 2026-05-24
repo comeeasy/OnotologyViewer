@@ -49,6 +49,24 @@ def query(dataset: str, sparql_str: str) -> list[dict]:
     return _flatten(bindings)
 
 
+def query_with_types(dataset: str, sparql_str: str) -> list[dict]:
+    """
+    SPARQL SELECT 쿼리를 실행하고 raw binding 정보를 반환한다.
+
+    각 변수에 대해 {"type": ..., "value": ..., "datatype": ...} 형태로 반환.
+    literal 의 datatype 이 필요한 경우 사용한다.
+
+    Returns:
+        [{"varName": {"type": "uri"|"literal"|"typed-literal", "value": "...", "datatype": "..."}, ...}]
+    """
+    sw = SPARQLWrapper(_sparql_endpoint(dataset))
+    _set_auth(sw)
+    sw.setQuery(sparql_str)
+    sw.setReturnFormat(JSON)
+    results = sw.query().convert()
+    return results.get("results", {}).get("bindings", [])
+
+
 def update(dataset: str, sparql_str: str) -> None:
     """
     SPARQL UPDATE(INSERT/DELETE)를 실행한다.

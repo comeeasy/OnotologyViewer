@@ -1,8 +1,8 @@
 # OntologyViewer — Master Plan
 
-**Date:** 2026-05-24  
+**Date:** 2026-05-25 (updated)  
 **Source:** `raw/spec.md`, `wiki/queries/ontology-viewer-spec.md`, `plans/plan_v01.md`  
-**Status:** In Progress
+**Status:** v01 ✅ | v02 ✅ | v03 ✅ (완료)
 
 ---
 
@@ -761,7 +761,7 @@ DELETE WHERE { GRAPH <{graphIRI}> { ?s ?p <{indIRI}> } }
 
 ```
 v01 Backend  →  v01 Frontend  →  v02 Backend  →  v02 Frontend  →  v03
-(✅ 완료)        (🚧 진행 중)      (⬜)             (⬜)            (⬜)
+(✅ 완료)        (✅ 완료)         (✅ 완료)        (✅ 완료)        (✅ 완료)
 ```
 
 ---
@@ -780,53 +780,48 @@ v01 Backend  →  v01 Frontend  →  v02 Backend  →  v02 Frontend  →  v03
 | v01-D | Data Property CRUD | 목록/생성/수정/삭제, functional | ✅ |
 | v01-E | Individual CRUD | 목록/생성/상세조회(outgoing+incoming)/수정/삭제 | ✅ |
 
-#### v01 Frontend 🚧
+#### v01 Frontend ✅
 
 | ID | 기능 | 포함 항목 | 상태 |
 |----|------|---------|------|
-| v01-F1 | 프로젝트 설정 | Vite + React + TS + antd 설치, CORS 추가, api/client.ts | ⬜ |
-| v01-F2 | OOI Navigator | Sider: health check, dataset/graph/ns 선택, OOI Context | ⬜ |
-| v01-F3 | 앱 레이아웃 | Header + Sider + Tabs 골격, OOI 미설정 가드 | ⬜ |
-| v01-F4 | Class 패널 | Table + Dialog(create/edit) + Detail Drawer | ⬜ |
-| v01-F5 | Object Property 패널 | Table + Dialog + Detail Drawer (characteristics) | ⬜ |
-| v01-F6 | Data Property 패널 | Table + Dialog + Detail Drawer (functional) | ⬜ |
-| v01-F7 | Individual 패널 | Table(class filter) + CreateDialog(3단계) + EditDialog + Detail Drawer | ⬜ |
-
-**v01 제외 항목:**
-- Dataset / Named Graph / Namespace 생성·수정·삭제
-- Class 계층(subClassOf) 편집
-- Individual Object Property 관계 수정 (PATCH 미지원)
-- Individual Class 마이그레이션
-- SPARQL Editor, Reasoning, SHACL / Rule / Datasource 매핑
+| v01-F1 | 프로젝트 설정 | Vite + React + TS + antd 설치, CORS 추가, api/client.ts | ✅ |
+| v01-F2 | OOI Navigator | Sider: health check, dataset/graph/ns 선택, OOI Context | ✅ |
+| v01-F3 | 앱 레이아웃 | Header + Sider + Tabs 골격, OOI 미설정 가드 | ✅ |
+| v01-F4 | Class 패널 | Table + Dialog(create/edit) + Detail Drawer | ✅ |
+| v01-F5 | Object Property 패널 | Table + Dialog + Detail Drawer (characteristics) | ✅ |
+| v01-F6 | Data Property 패널 | Table + Dialog + Detail Drawer (functional) | ✅ |
+| v01-F7 | Individual 패널 | Table(class filter) + CreateDialog(3단계) + EditDialog + Detail Drawer | ✅ |
 
 ---
 
 ### v02 — 관리 기능 + 고급 TBox + Reasoning
 
-#### v02 Backend ⬜
+#### v02 Backend ✅
 
 | ID | 기능 | 상태 |
 |----|------|------|
-| v02-A | Dataset CRUD | ⬜ |
-| v02-B | Named Graph CRUD | ⬜ |
-| v02-C | Namespace CRUD (IRI 일괄 치환 포함) | ⬜ |
-| v02-D | Class hierarchy 편집 (subClassOf 추가/삭제) | ⬜ |
-| v02-E | Individual Class 마이그레이션 | ⬜ |
-| v02-F | SPARQL Editor (OOI-scoped query/update) | ⬜ |
-| v02-G | Reasoning (Jena Reasoner + Materialization 미리보기) | ⬜ |
-| v02-H | `inverseOf` 설정 (Object Property) | ⬜ |
+| v02-A | Dataset CRUD | ✅ |
+| v02-B | Named Graph CRUD | ✅ |
+| v02-C | Namespace CRUD (IRI 일괄 치환 포함) | ✅ |
+| v02-D | Class hierarchy 편집 (subClassOf 추가/삭제) | ✅ |
+| v02-E | Individual Class 마이그레이션 | ✅ |
+| v02-F | SPARQL Editor (OOI-scoped query/update) | ✅ |
+| v02-G | Reasoning (Jena Reasoner + Materialization 미리보기) | ✅ |
+| v02-H | `inverseOf` 설정 (Object Property) | ✅ |
+| v02-I | Namespace 복수 선택 | ✅ |
+| v02-J | Fuseki Endpoint URL 입력 UI | ✅ |
 
-#### v02 Frontend ⬜
+#### v02 Frontend ✅
 
 | ID | 기능 | 상태 |
 |----|------|------|
-| v02-F1 | Dataset / Named Graph / Namespace CRUD UI | ⬜ |
-| v02-F2 | Class hierarchy 편집 UI (subClassOf 트리) | ⬜ |
-| v02-F3 | Individual Class 마이그레이션 UI | ⬜ |
-| v02-F4 | Individual Object Property 관계 수정 UI | ⬜ |
-| v02-F5 | SPARQL Editor UI (OOI-scoped) | ⬜ |
-| v02-F6 | Reasoning UI (Reasoner 선택 + Materialization 미리보기) | ⬜ |
-| v02-F7 | `inverseOf` 설정 UI | ⬜ |
+| v02-F1 | Dataset / Named Graph / Namespace CRUD UI | ✅ |
+| v02-F2 | Class hierarchy 편집 UI (subClassOf 트리) | ✅ |
+| v02-F3 | Individual Class 마이그레이션 UI | ✅ |
+| v02-F4 | Individual Object Property 관계 수정 UI | ✅ |
+| v02-F5 | SPARQL Editor UI (OOI-scoped) | ✅ |
+| v02-F6 | Reasoning UI (Reasoner 선택 + Materialization 미리보기) | ✅ |
+| v02-F7 | `inverseOf` 설정 UI | ✅ |
 
 ---
 
@@ -834,10 +829,10 @@ v01 Backend  →  v01 Frontend  →  v02 Backend  →  v02 Frontend  →  v03
 
 | ID | 기능 | 상태 |
 |----|------|------|
-| v03-A | SHACL 검증 룰 시각화 | ⬜ |
-| v03-B | Rule 시각화 | ⬜ |
-| v03-C | Datasource 매핑 | ⬜ |
-| v03-D | Universal Namespace import UI | ⬜ |
+| v03-A | SHACL 검증 룰 관리 + 검증 | ✅ |
+| v03-B | SPARQL 기반 추론 Rule | ✅ |
+| v03-C | Datasource 매핑 + 미리보기 | ✅ |
+| v03-D | Universal Namespace import UI | ✅ |
 
 ---
 

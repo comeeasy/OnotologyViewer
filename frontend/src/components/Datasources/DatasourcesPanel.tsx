@@ -11,12 +11,13 @@ import {
   Popconfirm, Select, Space, Tag, Typography, message,
 } from 'antd'
 import {
-  DatabaseOutlined, DeleteOutlined, PlusOutlined,
+  DatabaseOutlined, DeleteOutlined, EyeOutlined, PlusOutlined,
 } from '@ant-design/icons'
 import { useOOI } from '../../context/OOIContext'
 import {
   listDatasources, createDatasource, getDatasource,
   deleteDatasource, addClassMapping, deleteClassMapping, addPropertyMapping,
+  previewDatasource,
 } from '../../api/datasources'
 import type { DatasourceSummary, DatasourceDetail, ClassMappingItem } from '../../api/datasources'
 
@@ -173,6 +174,23 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
   const [mappingForm] = Form.useForm()
   const [addingMapping, setAddingMapping] = useState(false)
 
+  // 미리보기
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewData, setPreviewData] = useState<{ rows: unknown[]; error: string | null } | null>(null)
+
+  const handlePreview = async () => {
+    setPreviewLoading(true)
+    setPreviewData(null)
+    try {
+      const res = await previewDatasource(dataset, graph, dsIri)
+      setPreviewData({ rows: res.rows, error: res.error })
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   const reload = async () => {
     try {
       const d = await getDatasource(dataset, graph, dsIri)
@@ -216,6 +234,34 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
           <Descriptions.Item label="설명">{detail.description}</Descriptions.Item>
         )}
       </Descriptions>
+
+      {/* 미리보기 */}
+      <Space style={{ marginBottom: 8 }}>
+        <Button
+          size="small"
+          icon={<EyeOutlined />}
+          loading={previewLoading}
+          onClick={handlePreview}
+        >
+          미리보기
+        </Button>
+      </Space>
+      {previewData && (
+        previewData.error ? (
+          <Alert type="error" message={`미리보기 오류: ${previewData.error}`} style={{ marginBottom: 8 }} />
+        ) : (
+          <Alert
+            type="info"
+            message={`미리보기 (${previewData.rows.length}행)`}
+            description={
+              <pre style={{ fontSize: 11, maxHeight: 150, overflow: 'auto', margin: 0 }}>
+                {JSON.stringify(previewData.rows, null, 2)}
+              </pre>
+            }
+            style={{ marginBottom: 8 }}
+          />
+        )
+      )}
 
       <Text strong style={{ display: 'block', marginBottom: 4 }}>Class 매핑</Text>
 

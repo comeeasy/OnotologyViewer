@@ -59,7 +59,7 @@ const IndividualEditDialog: React.FC<Props> = ({
       // 기존 DP 값 로드 (literal outgoing)
       const existingDp = detail.outgoing
         .filter((o) => o.value_type === 'literal')
-        .map((o) => ({ property_iri: o.property, value: o.value, datatype: 'string' }))
+        .map((o) => ({ property_iri: o.property, value: o.value, datatype: o.datatype ?? 'string' }))
       setDpUpdates(existingDp)
 
       // 기존 OP 관계 로드 (iri outgoing, rdfs/rdf 제외)

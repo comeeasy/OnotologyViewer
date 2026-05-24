@@ -43,9 +43,11 @@ export const updateClass = async (
 
 export const deleteClass = async (
   ds: string, graph: string, iri: string,
-  onIndividual: 'delete' = 'delete',
+  onIndividual: 'delete' | 'migrate' = 'delete',
+  targetClassIri?: string,
 ): Promise<void> => {
   const p = new URLSearchParams({ dataset: ds, graph, on_individual: onIndividual })
+  if (targetClassIri) p.set('target_class_iri', targetClassIri)
   await apiFetch<void>('DELETE', `/api/tbox/classes/${encodeIRI(iri)}?${p}`)
 }
 

@@ -1,8 +1,18 @@
 # OntologyViewer — Plan v03
 
-**Date:** 2026-05-25  
-**Status:** In Progress  
+**Date:** 2026-05-25 (updated)  
+**Status:** ✅ 완료 (190/190 통합 테스트 통과)  
 **Depends on:** plan_v02.md (완료)
+
+### 구현 완료 요약
+- v03-A: SHACL 검증 룰 관리 + Individual 검증 + ClassDetail SHACL 탭 ✅
+- v03-B: SPARQL 기반 추론 Rule (CRUD + apply + materialize) ✅
+- v03-C: Datasource 매핑 (CRUD + ClassMapping + PropertyMapping + 미리보기) ✅
+- v03-D: Universal Namespace import UI ✅
+- 추가: Individual Edit 시 datatype 실제 값 반영 (query_with_types 활용)
+- 추가: ClassDetail에 SHACL/Rules/Datasource 탭 추가
+- 추가: Class 삭제 시 Individual migrate 모달 (UI + 백엔드)
+- 추가: nginx proxy_pass URI 정규화 버그 수정 (IRI double-slash 문제)
 
 ---
 

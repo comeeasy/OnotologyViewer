@@ -96,6 +96,24 @@ export const deleteClassMapping = (
   )
 }
 
+export const previewDatasource = (
+  dataset: string,
+  graph: string,
+  dsIri: string,
+  limit = 10,
+): Promise<{
+  datasource_iri: string
+  label: string | null
+  type: string
+  connection_info: string
+  rows: unknown[]
+  error: string | null
+}> => {
+  const encoded = encodeURIComponent(dsIri)
+  const params = new URLSearchParams({ dataset, graph, limit: String(limit) })
+  return apiFetch('GET', `/api/datasources/${encoded}/preview?${params}`)
+}
+
 export const addPropertyMapping = (
   dataset: string,
   graph: string,
