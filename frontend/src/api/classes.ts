@@ -1,6 +1,12 @@
 import { apiFetch, encodeIRI } from './client'
 import type { ClassSummary, ClassDetail } from '../types/ontology'
 
+export interface ClassHierarchyItem {
+  source_graph: string | null
+  iri: string
+  super_classes: string[]
+}
+
 /** dataset + 복수 그래프 + 복수 namespace 를 URLSearchParams로 빌드 */
 function buildParams(ds: string, graphs: string | string[], ns: string | string[]): URLSearchParams {
   const p = new URLSearchParams({ dataset: ds })
@@ -9,6 +15,13 @@ function buildParams(ds: string, graphs: string | string[], ns: string | string[
   const nsList = Array.isArray(ns) ? ns : [ns]
   nsList.forEach((n) => p.append('namespace', n))
   return p
+}
+
+export const listClassHierarchy = async (
+  ds: string, graphs: string | string[], ns: string | string[],
+): Promise<ClassHierarchyItem[]> => {
+  const p = buildParams(ds, graphs, ns)
+  return apiFetch<ClassHierarchyItem[]>('GET', `/api/tbox/classes/hierarchy?${p}`)
 }
 
 export const listClasses = async (

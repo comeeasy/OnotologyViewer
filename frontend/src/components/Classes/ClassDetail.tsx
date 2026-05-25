@@ -23,14 +23,17 @@ interface Props {
   allClasses: ClassSummary[]   // 같은 graph의 전체 Class 목록 (상위 class 선택용)
   onClose: () => void
   onRefresh: () => void        // 계층 편집 후 부모에게 reload 요청
+  onClassSelect?: (iri: string) => void  // 다른 Class 상세로 이동
 }
 
 const ClassDetailDrawer: React.FC<Props> = ({
-  open, detail, loading, allClasses, onClose, onRefresh,
+  open, detail, loading, allClasses, onClose, onRefresh, onClassSelect,
 }) => {
   const { dataset, graph } = useOOI()
-  const [selParent, setSelParent] = useState<string | undefined>(undefined)
-  const [adding, setAdding] = useState(false)
+  const [selParent, setSelParent]   = useState<string | undefined>(undefined)
+  const [selChild,  setSelChild]    = useState<string | undefined>(undefined)
+  const [addingSuper, setAddingSuper] = useState(false)
+  const [addingSub,   setAddingSub]   = useState(false)
 
   // SHACL / Rule / Datasource 탭 데이터 (lazy load on tab switch)
   const [shaclShapes, setShaclShapes] = useState<NodeShapeSummary[]>([])
@@ -82,7 +85,7 @@ const ClassDetailDrawer: React.FC<Props> = ({
 
   const handleAddSuper = async () => {
     if (!dataset || !graph || !detail || !selParent) return
-    setAdding(true)
+    setAddingSuper(true)
     try {
       await addSuperClass(dataset, graph, detail.iri, selParent)
       message.success('상위 Class가 추가되었습니다.')
@@ -91,7 +94,7 @@ const ClassDetailDrawer: React.FC<Props> = ({
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
-      setAdding(false)
+      setAddingSuper(false)
     }
   }
 
@@ -106,8 +109,39 @@ const ClassDetailDrawer: React.FC<Props> = ({
     }
   }
 
+  const handleAddSub = async () => {
+    if (!dataset || !graph || !detail || !selChild) return
+    setAddingSub(true)
+    try {
+      // 선택한 자식 Class의 rdfs:subClassOf 를 현재 Class로 설정
+      await addSuperClass(dataset, graph, selChild, detail.iri)
+      message.success('하위 Class가 추가되었습니다.')
+      setSelChild(undefined)
+      onRefresh()
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setAddingSub(false)
+    }
+  }
+
+  const handleRemoveSub = async (childIri: string) => {
+    if (!dataset || !graph || !detail) return
+    try {
+      await removeSuperClass(dataset, graph, childIri, detail.iri)
+      message.success('하위 Class 관계가 삭제되었습니다.')
+      onRefresh()
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    }
+  }
+
   const parentOptions = allClasses
     .filter((c) => c.iri !== detail?.iri && !(detail?.super_classes ?? []).includes(c.iri))
+    .map((c) => ({ label: c.label ?? shortIRI(c.iri), value: c.iri, title: c.iri }))
+
+  const childOptions = allClasses
+    .filter((c) => c.iri !== detail?.iri && !(detail?.sub_classes ?? []).includes(c.iri))
     .map((c) => ({ label: c.label ?? shortIRI(c.iri), value: c.iri, title: c.iri }))
 
   const infoTab = detail && (
@@ -123,22 +157,38 @@ const ClassDetailDrawer: React.FC<Props> = ({
 
       <div>
         <Text strong>상위 Class</Text>
+        <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>이 Class가 상속받는 Class</Text>
         <div style={{ marginTop: 4 }}>
           {detail.super_classes.length === 0
             ? <Text type="secondary">없음</Text>
             : detail.super_classes.map((iri) => (
-                <Tag key={iri} title={iri}>{classLabel(iri)}</Tag>
+                <Tag
+                  key={iri} title={iri}
+                  color={onClassSelect ? 'geekblue' : undefined}
+                  style={onClassSelect ? { cursor: 'pointer' } : undefined}
+                  onClick={() => onClassSelect?.(iri)}
+                >
+                  {classLabel(iri)}
+                </Tag>
               ))}
         </div>
       </div>
 
       <div>
         <Text strong>하위 Class</Text>
+        <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>이 Class를 상속받는 Class</Text>
         <div style={{ marginTop: 4 }}>
           {detail.sub_classes.length === 0
             ? <Text type="secondary">없음</Text>
             : detail.sub_classes.map((iri) => (
-                <Tag key={iri} title={iri}>{classLabel(iri)}</Tag>
+                <Tag
+                  key={iri} title={iri}
+                  color={onClassSelect ? 'cyan' : undefined}
+                  style={onClassSelect ? { cursor: 'pointer' } : undefined}
+                  onClick={() => onClassSelect?.(iri)}
+                >
+                  {classLabel(iri)}
+                </Tag>
               ))}
         </div>
       </div>
@@ -173,31 +223,44 @@ const ClassDetailDrawer: React.FC<Props> = ({
 
   const hierarchyTab = detail && (
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
-      {/* 현재 상위 Class (삭제 가능) */}
+
+      {/* ── 상위 Class 섹션 ─────────────────────────────────────────────── */}
+      {/* 상위 Class = 이 Class가 상속(extend)받는 Class (rdfs:subClassOf 의 목적어) */}
       <div>
-        <Text strong>현재 상위 Class</Text>
+        <Text strong>상위 Class</Text>
         <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
-          (클릭하면 관계 삭제)
+          이 Class가 상속받는 Class — 태그 클릭 시 관계 삭제
         </Text>
         <div style={{ marginTop: 8, minHeight: 24 }}>
           {detail.super_classes.length === 0
             ? <Text type="secondary" style={{ fontSize: 12 }}>설정된 상위 Class 없음</Text>
             : detail.super_classes.map((iri) => (
-                <Popconfirm
-                  key={iri}
-                  title={`상위 Class 관계를 삭제합니까?\n${classLabel(iri)}`}
-                  onConfirm={() => handleRemoveSuper(iri)}
-                  okText="삭제" okButtonProps={{ danger: true }}
-                >
-                  <Tag
-                    icon={<MinusCircleOutlined />}
-                    color="geekblue"
-                    style={{ cursor: 'pointer', marginBottom: 4 }}
-                    title={iri}
+                <Space key={iri} size={2} style={{ marginBottom: 4, display: 'inline-flex' }}>
+                  {onClassSelect && (
+                    <Tag
+                      color="geekblue"
+                      style={{ cursor: 'pointer', marginRight: 0 }}
+                      title={`클릭하여 상세 보기: ${iri}`}
+                      onClick={() => onClassSelect(iri)}
+                    >
+                      {classLabel(iri)}
+                    </Tag>
+                  )}
+                  <Popconfirm
+                    title={`상위 Class 관계를 삭제합니까?\n${classLabel(iri)}`}
+                    onConfirm={() => handleRemoveSuper(iri)}
+                    okText="삭제" okButtonProps={{ danger: true }}
                   >
-                    {classLabel(iri)}
-                  </Tag>
-                </Popconfirm>
+                    <Tag
+                      icon={<MinusCircleOutlined />}
+                      color={onClassSelect ? undefined : 'geekblue'}
+                      style={{ cursor: 'pointer', marginBottom: 0 }}
+                      title={onClassSelect ? '클릭하여 관계 삭제' : iri}
+                    >
+                      {onClassSelect ? '삭제' : classLabel(iri)}
+                    </Tag>
+                  </Popconfirm>
+                </Space>
               ))
           }
         </div>
@@ -218,7 +281,7 @@ const ClassDetailDrawer: React.FC<Props> = ({
           />
           <Button
             size="small" type="dashed" icon={<PlusOutlined />}
-            loading={adding} disabled={!selParent}
+            loading={addingSuper} disabled={!selParent}
             onClick={handleAddSuper}
           >
             추가
@@ -235,23 +298,78 @@ const ClassDetailDrawer: React.FC<Props> = ({
 
       <Divider style={{ margin: '4px 0' }} />
 
-      {/* 현재 하위 Class (읽기 전용 — 하위에서 관리) */}
+      {/* ── 하위 Class 섹션 ─────────────────────────────────────────────── */}
+      {/* 하위 Class = 이 Class를 상속(extend)받는 Class (rdfs:subClassOf 의 주어) */}
       <div>
         <Text strong>하위 Class</Text>
         <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
-          (하위 Class에서 직접 편집)
+          이 Class를 상속받는 Class — 태그 클릭 시 관계 삭제
         </Text>
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 8, minHeight: 24 }}>
           {detail.sub_classes.length === 0
-            ? <Text type="secondary" style={{ fontSize: 12 }}>없음</Text>
+            ? <Text type="secondary" style={{ fontSize: 12 }}>설정된 하위 Class 없음</Text>
             : detail.sub_classes.map((iri) => (
-                <Tag key={iri} color="cyan" title={iri} style={{ marginBottom: 4 }}>
-                  {classLabel(iri)}
-                </Tag>
+                <Space key={iri} size={2} style={{ marginBottom: 4, display: 'inline-flex' }}>
+                  {onClassSelect && (
+                    <Tag
+                      color="cyan"
+                      style={{ cursor: 'pointer', marginRight: 0 }}
+                      title={`클릭하여 상세 보기: ${iri}`}
+                      onClick={() => onClassSelect(iri)}
+                    >
+                      {classLabel(iri)}
+                    </Tag>
+                  )}
+                  <Popconfirm
+                    title={`하위 Class 관계를 삭제합니까?\n${classLabel(iri)}`}
+                    onConfirm={() => handleRemoveSub(iri)}
+                    okText="삭제" okButtonProps={{ danger: true }}
+                  >
+                    <Tag
+                      icon={<MinusCircleOutlined />}
+                      color={onClassSelect ? undefined : 'cyan'}
+                      style={{ cursor: 'pointer', marginBottom: 0 }}
+                      title={onClassSelect ? '클릭하여 관계 삭제' : iri}
+                    >
+                      {onClassSelect ? '삭제' : classLabel(iri)}
+                    </Tag>
+                  </Popconfirm>
+                </Space>
               ))
           }
         </div>
       </div>
+
+      {/* 하위 Class 추가 */}
+      <div>
+        <Text strong>하위 Class 추가</Text>
+        <Space style={{ marginTop: 8 }}>
+          <Select
+            style={{ width: 220 }}
+            placeholder="하위 Class 선택"
+            options={childOptions}
+            value={selChild}
+            onChange={setSelChild}
+            showSearch
+            size="small"
+          />
+          <Button
+            size="small" type="dashed" icon={<PlusOutlined />}
+            loading={addingSub} disabled={!selChild}
+            onClick={handleAddSub}
+          >
+            추가
+          </Button>
+        </Space>
+        {childOptions.length === 0 && (
+          <div style={{ marginTop: 4 }}>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              추가 가능한 하위 Class 없음 (모두 연결됨 또는 없음)
+            </Text>
+          </div>
+        )}
+      </div>
+
     </Space>
   )
 

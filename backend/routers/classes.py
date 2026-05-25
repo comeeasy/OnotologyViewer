@@ -10,6 +10,7 @@ from services.class_ import (
     create_class,
     delete_class,
     get_class_detail,
+    list_class_hierarchy,
     list_classes,
     remove_super_class,
     update_class,
@@ -84,6 +85,12 @@ class AddSuperClassBody(BaseModel):
     parent_iri: str
 
 
+class HierarchyItem(BaseModel):
+    source_graph:  str | None = None
+    iri:           str
+    super_classes: list[str]
+
+
 # ────────────────────────────────────────────────
 # Endpoints
 # ────────────────────────────────────────────────
@@ -127,6 +134,26 @@ def post_class(body: CreateClassBody):
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return CreateClassResponse(iri=iri)
+
+
+@router.get("/hierarchy", response_model=list[HierarchyItem])
+def get_class_hierarchy(
+    dataset:   str       = Query(..., description="Fuseki dataset 명"),
+    graph:     list[str] = Query(..., description="Named Graph IRI (복수 허용)"),
+    namespace: list[str] = Query(..., description="Namespace base IRI (복수 허용)"),
+):
+    """모든 Class의 직접 상위 Class 목록을 반환한다 (트리 뷰 구성용)."""
+    graphs  = [g for g in graph if g.strip()]
+    ns_list = [ns for ns in namespace if ns.strip()]
+    if not graphs:
+        raise HTTPException(422, "graph는 하나 이상 유효한 값을 제공해야 합니다.")
+    if not ns_list:
+        raise HTTPException(422, "namespace는 하나 이상 유효한 값을 제공해야 합니다.")
+    try:
+        items = list_class_hierarchy(dataset, graphs, ns_list)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return [HierarchyItem(**item) for item in items]
 
 
 @router.get("/{iri:path}", response_model=ClassDetail)

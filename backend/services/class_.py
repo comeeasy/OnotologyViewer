@@ -47,6 +47,24 @@ SELECT ?_g ?class ?label ?comment WHERE {{
 }}
 """
 
+# 계층 조회: 각 Class의 직접 부모(rdfs:subClassOf) 목록을 한 번에 반환
+_Q_HIERARCHY = """
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?_g ?class ?parent WHERE {{
+  {graph_values}
+  GRAPH ?_g {{
+    ?class a owl:Class .
+    FILTER({ns_filter})
+    OPTIONAL {{
+      ?class rdfs:subClassOf ?parent .
+      FILTER(isIRI(?parent))
+    }}
+  }}
+}}
+"""
+
 _Q_SUPER_CLASSES = """
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
@@ -265,6 +283,35 @@ def list_classes(dataset: str, graphs: str | list[str], namespace: str | list[st
         }
         for r in rows
     ]
+
+
+def list_class_hierarchy(dataset: str, graphs: str | list[str], namespace: str | list[str]) -> list[dict]:
+    """각 Class의 직접 상위 클래스 목록을 포함한 계층 정보를 반환한다."""
+    graph_list = [graphs] if isinstance(graphs, str) else list(graphs)
+    for g in graph_list:
+        _validate_iri(g)
+    ns_list = [namespace] if isinstance(namespace, str) else list(namespace)
+    if not ns_list:
+        raise ValueError("namespace는 하나 이상 제공해야 합니다.")
+    for ns in ns_list:
+        _validate_iri(ns)
+
+    rows = sparql_query(dataset, _Q_HIERARCHY.format(
+        graph_values=graph_values_clause(graph_list),
+        ns_filter=_ns_filter(ns_list),
+    ))
+
+    # class IRI → {source_graph, super_classes: set} 누산
+    agg: dict[str, dict] = {}
+    for r in rows:
+        iri = r["class"]
+        if iri not in agg:
+            agg[iri] = {"source_graph": r.get("_g"), "iri": iri, "super_classes": []}
+        parent = r.get("parent")
+        if parent and parent not in agg[iri]["super_classes"]:
+            agg[iri]["super_classes"].append(parent)
+
+    return list(agg.values())
 
 
 def get_class_detail(dataset: str, graph: str, class_iri: str) -> dict | None:

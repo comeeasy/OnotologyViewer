@@ -1,11 +1,22 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { Button, Modal, Radio, Select, Space, Table, Typography, message } from 'antd'
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { deleteClass, getClass, listClasses, createClass, updateClass } from '../../api/classes'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Button, Modal, Radio, Select, Space, Table, Typography,
+  Segmented, message,
+} from 'antd'
+import {
+  DeleteOutlined, EditOutlined, PlusOutlined,
+  UnorderedListOutlined, ApartmentOutlined,
+} from '@ant-design/icons'
+import {
+  deleteClass, getClass, listClasses, createClass, updateClass,
+  listClassHierarchy,
+} from '../../api/classes'
+import type { ClassHierarchyItem } from '../../api/classes'
 import { useOOI } from '../../context/OOIContext'
 import type { ClassSummary, ClassDetail } from '../../types/ontology'
 import ClassDialog from './ClassDialog'
 import ClassDetailDrawer from './ClassDetail'
+import ClassHierarchyTree from './ClassHierarchyTree'
 
 const { Text } = Typography
 
@@ -15,30 +26,37 @@ const ClassTable: React.FC = () => {
   const [rows, setRows] = useState<ClassSummary[]>([])
   const [loading, setLoading] = useState(false)
 
+  // ── 뷰 모드 ─────────────────────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<'table' | 'tree'>('table')
+  const [hierarchyItems, setHierarchyItems] = useState<ClassHierarchyItem[]>([])
+  const [hierarchyLoading, setHierarchyLoading] = useState(false)
+
   // Dialog 상태
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
+  const [dialogOpen, setDialogOpen]   = useState(false)
+  const [dialogMode, setDialogMode]   = useState<'create' | 'edit'>('create')
   const [dialogTarget, setDialogTarget] = useState<ClassSummary | null>(null)
   const [dialogLoading, setDialogLoading] = useState(false)
+  // 트리에서 "자식 추가" 클릭 시 미리 지정할 부모 IRI
+  const pendingParentRef = useRef<string | null>(null)
 
   // Detail Drawer 상태
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen]     = useState(false)
   const [drawerDetail, setDrawerDetail] = useState<ClassDetail | null>(null)
   const [drawerLoading, setDrawerLoading] = useState(false)
 
-  // Delete Modal 상태 (individual 처리 옵션)
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<ClassSummary | null>(null)
+  // Delete Modal 상태
+  const [deleteModalOpen, setDeleteModalOpen]       = useState(false)
+  const [deleteTarget, setDeleteTarget]             = useState<ClassSummary | null>(null)
   const [deleteIndividualCount, setDeleteIndividualCount] = useState(0)
-  const [onIndividual, setOnIndividual] = useState<'delete' | 'migrate'>('delete')
-  const [migrateTarget, setMigrateTarget] = useState<string | undefined>(undefined)
-  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [onIndividual, setOnIndividual]             = useState<'delete' | 'migrate'>('delete')
+  const [migrateTarget, setMigrateTarget]           = useState<string | undefined>(undefined)
+  const [deleteLoading, setDeleteLoading]           = useState(false)
 
+  // ── 데이터 로드 ─────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     if (!dataset || graphs.length === 0 || !namespace) return
     setLoading(true)
     try {
-      // 복수 그래프에서 Class 목록 조회
       setRows(await listClasses(dataset, graphs, namespace))
     } catch (e: unknown) {
       message.error((e as Error).message)
@@ -47,17 +65,48 @@ const ClassTable: React.FC = () => {
     }
   }, [dataset, graphs, namespace])
 
+  const loadHierarchy = useCallback(async () => {
+    if (!dataset || graphs.length === 0 || !namespace) return
+    setHierarchyLoading(true)
+    try {
+      setHierarchyItems(await listClassHierarchy(dataset, graphs, namespace))
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setHierarchyLoading(false)
+    }
+  }, [dataset, graphs, namespace])
+
   useEffect(() => { load() }, [load])
 
-  // ── Create ──
-  const openCreate = () => {
+  // 트리 뷰로 전환할 때 계층 데이터 로드
+  useEffect(() => {
+    if (viewMode === 'tree') loadHierarchy()
+  }, [viewMode, loadHierarchy])
+
+  const refreshAll = () => {
+    load()
+    if (viewMode === 'tree') loadHierarchy()
+  }
+
+  // ── label 조회용 Map (트리에서 IRI → label 변환) ─────────────────────────
+  const classMap = React.useMemo(
+    () => new Map(rows.map((r) => [r.iri, r])),
+    [rows],
+  )
+
+  // ── Create ──────────────────────────────────────────────────────────────
+  const openCreate = (parentIri?: string) => {
+    pendingParentRef.current = parentIri ?? null
     setDialogMode('create')
     setDialogTarget(null)
     setDialogOpen(true)
   }
 
-  // ── Edit ──
-  const openEdit = (row: ClassSummary) => {
+  // ── Edit ────────────────────────────────────────────────────────────────
+  const openEdit = (iri: string) => {
+    const row = rows.find((r) => r.iri === iri)
+    if (!row) return
     setDialogMode('edit')
     setDialogTarget(row)
     setDialogOpen(true)
@@ -68,14 +117,20 @@ const ClassTable: React.FC = () => {
     setDialogLoading(true)
     try {
       if (dialogMode === 'create') {
-        await createClass(dataset, graph, namespace, values.label, values.comment)
+        const newIri = await createClass(dataset, graph, namespace, values.label, values.comment)
+        // 자식 추가 모드: 새 클래스를 부모 아래 연결
+        if (pendingParentRef.current) {
+          const { addSuperClass } = await import('../../api/classes')
+          await addSuperClass(dataset, graph, newIri, pendingParentRef.current)
+        }
+        pendingParentRef.current = null
         message.success('Class가 생성되었습니다.')
       } else if (dialogTarget) {
         await updateClass(dataset, graph, dialogTarget.iri, values)
         message.success('Class가 수정되었습니다.')
       }
       setDialogOpen(false)
-      load()
+      refreshAll()
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
@@ -83,21 +138,22 @@ const ClassTable: React.FC = () => {
     }
   }
 
-  // ── Delete ──
-  const handleDelete = async (row: ClassSummary) => {
+  // ── Delete ──────────────────────────────────────────────────────────────
+  const handleDelete = async (iri: string) => {
     if (!dataset || !graph) return
+    const row = rows.find((r) => r.iri === iri)
+    if (!row) return
     const targetGraph = row.source_graph ?? graph
     try {
-      const detail = await getClass(dataset, targetGraph, row.iri)
+      const detail = await getClass(dataset, targetGraph, iri)
       if (detail.individual_count > 0) {
-        // Individual 처리 방법 선택 모달 표시
         setDeleteTarget(row)
         setDeleteIndividualCount(detail.individual_count)
         setOnIndividual('delete')
         setMigrateTarget(undefined)
         setDeleteModalOpen(true)
       } else {
-        await doDelete(row.iri, 'delete', undefined)
+        await doDelete(iri, 'delete', undefined)
       }
     } catch (e: unknown) {
       message.error((e as Error).message)
@@ -111,7 +167,9 @@ const ClassTable: React.FC = () => {
       await deleteClass(dataset, graph, iri, how, target)
       message.success('Class가 삭제되었습니다.')
       setDeleteModalOpen(false)
-      load()
+      // 삭제된 클래스가 상세 창에 열려있으면 닫기
+      if (drawerDetail?.iri === iri) setDrawerOpen(false)
+      refreshAll()
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
@@ -119,15 +177,16 @@ const ClassTable: React.FC = () => {
     }
   }
 
-  // ── Detail Drawer ──
-  const openDetail = async (row: ClassSummary) => {
+  // ── Detail Drawer ────────────────────────────────────────────────────────
+  const openDetailByIri = async (iri: string) => {
     if (!dataset || !graph) return
-    const targetGraph = row.source_graph ?? graph  // 출처 그래프 우선
+    const row = rows.find((r) => r.iri === iri)
+    const targetGraph = row?.source_graph ?? graph
     setDrawerDetail(null)
     setDrawerOpen(true)
     setDrawerLoading(true)
     try {
-      setDrawerDetail(await getClass(dataset, targetGraph, row.iri))
+      setDrawerDetail(await getClass(dataset, targetGraph, iri))
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
@@ -135,15 +194,20 @@ const ClassTable: React.FC = () => {
     }
   }
 
+  const openDetail = (row: ClassSummary) => openDetailByIri(row.iri)
+
   const refreshDetail = async () => {
     if (!dataset || !graph || !drawerDetail) return
     try {
-      setDrawerDetail(await getClass(dataset, graph, drawerDetail.iri))
+      const targetGraph = rows.find((r) => r.iri === drawerDetail.iri)?.source_graph ?? graph
+      setDrawerDetail(await getClass(dataset, targetGraph, drawerDetail.iri))
     } catch { /* 무시 */ }
+    refreshAll()
   }
 
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
 
+  // ── 테이블 컬럼 ─────────────────────────────────────────────────────────
   const columns = [
     {
       title: 'Name',
@@ -173,13 +237,12 @@ const ClassTable: React.FC = () => {
           <Button
             size="small"
             icon={<EditOutlined />}
-            onClick={(e) => { e.stopPropagation(); openEdit(row) }}
+            onClick={(e) => { e.stopPropagation(); openEdit(row.iri) }}
           />
           <Button
-            size="small"
-            danger
+            size="small" danger
             icon={<DeleteOutlined />}
-            onClick={(e) => { e.stopPropagation(); handleDelete(row) }}
+            onClick={(e) => { e.stopPropagation(); handleDelete(row.iri) }}
           />
         </Space>
       ),
@@ -192,23 +255,46 @@ const ClassTable: React.FC = () => {
 
   return (
     <>
-      <div style={{ marginBottom: 12 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+      {/* ── 툴바 ────────────────────────────────────────────────────────── */}
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
           새 Class
         </Button>
+        <Segmented
+          value={viewMode}
+          onChange={(v) => setViewMode(v as 'table' | 'tree')}
+          options={[
+            { value: 'table', icon: <UnorderedListOutlined />, label: '목록' },
+            { value: 'tree',  icon: <ApartmentOutlined />,     label: '계층 트리' },
+          ]}
+        />
       </div>
 
-      <Table
-        rowKey="iri"
-        size="small"
-        loading={loading}
-        dataSource={rows}
-        columns={columns}
-        onRow={(row) => ({ onClick: () => openDetail(row), style: { cursor: 'pointer' } })}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
-      />
+      {/* ── 뷰 ─────────────────────────────────────────────────────────── */}
+      {viewMode === 'table' ? (
+        <Table
+          rowKey="iri"
+          size="small"
+          loading={loading}
+          dataSource={rows}
+          columns={columns}
+          onRow={(row) => ({ onClick: () => openDetail(row), style: { cursor: 'pointer' } })}
+          pagination={{ pageSize: 20, showSizeChanger: false }}
+        />
+      ) : (
+        <ClassHierarchyTree
+          items={hierarchyItems}
+          classMap={classMap}
+          loading={hierarchyLoading}
+          onClassSelect={openDetailByIri}
+          onEdit={openEdit}
+          onDelete={handleDelete}
+          onAddChild={(parentIri) => openCreate(parentIri)}
+          onRefresh={refreshAll}
+        />
+      )}
 
-      {/* Individual 처리 방법 선택 Modal */}
+      {/* ── Individual 처리 방법 선택 Modal ─────────────────────────────── */}
       <Modal
         title="Class 삭제"
         open={deleteModalOpen}
@@ -254,7 +340,7 @@ const ClassTable: React.FC = () => {
         initial={dialogTarget}
         loading={dialogLoading}
         onOk={handleDialogOk}
-        onCancel={() => setDialogOpen(false)}
+        onCancel={() => { setDialogOpen(false); pendingParentRef.current = null }}
       />
 
       <ClassDetailDrawer
@@ -264,6 +350,7 @@ const ClassTable: React.FC = () => {
         allClasses={rows}
         onClose={() => setDrawerOpen(false)}
         onRefresh={refreshDetail}
+        onClassSelect={openDetailByIri}
       />
     </>
   )
