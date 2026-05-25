@@ -9,6 +9,12 @@ from fuseki.sparql import query as sparql_query, update as sparql_update
 
 router = APIRouter(prefix="/api/datasets", tags=["graphs"])
 
+# 시스템 내부 그래프 접미사 — Navigator에 노출하지 않는다
+_SYSTEM_SUFFIXES = ("__inferred", "/shacl", "/rules", "/datasources")
+
+def _is_system_graph(iri: str) -> bool:
+    return any(iri.endswith(s) for s in _SYSTEM_SUFFIXES)
+
 
 # ── SPARQL ─────────────────────────────────────────────
 _Q_GRAPHS = "SELECT DISTINCT ?g WHERE { GRAPH ?g { } }"
@@ -124,14 +130,17 @@ class PatchGraphBody(BaseModel):
 
 @router.get("/{ds}/graphs", response_model=GraphsResponse)
 def get_graphs(ds: str):
-    """dataset 안의 모든 Named Graph IRI 목록을 반환한다."""
+    """dataset 안의 사용자 Named Graph IRI 목록을 반환한다 (시스템 그래프 제외)."""
     rows = sparql_query(ds, _Q_GRAPHS)
-    return GraphsResponse(dataset=ds, graphs=[r["g"] for r in rows])
+    return GraphsResponse(
+        dataset=ds,
+        graphs=[r["g"] for r in rows if not _is_system_graph(r["g"])],
+    )
 
 
 @router.get("/{ds}/graphs/list", response_model=list[GraphDetail])
 def list_graphs_with_detail(ds: str):
-    """dataset 안의 모든 Named Graph을 label·comment·triple_count 포함하여 반환한다."""
+    """dataset 안의 사용자 Named Graph을 label·comment·triple_count 포함하여 반환한다 (시스템 그래프 제외)."""
     rows = sparql_query(ds, _Q_GRAPHS_LIST)
     return [
         GraphDetail(
@@ -141,6 +150,7 @@ def list_graphs_with_detail(ds: str):
             triple_count=int(r.get("cnt", 0)),
         )
         for r in rows
+        if not _is_system_graph(r["g"])
     ]
 
 

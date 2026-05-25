@@ -302,17 +302,23 @@ def get_incompatible_properties(
         graph=graph, ind_iri=ind_iri,
     ))
 
-    # 3. domain ∉ ancestors → 비호환
-    incompatible: list[str] = []
-    seen: set[str] = set()
+    # 3. 프로퍼티별 domain 집합 수집
+    #    property가 여러 domain을 가질 수 있으므로
+    #    하나라도 ancestor에 포함되면 호환(compatible)으로 판정
+    prop_domains: dict[str, set[str]] = {}
     for row in rows:
         prop   = row["prop"]
         domain = row["domain"]
-        if prop in seen:
-            continue
-        if domain not in ancestors:
-            incompatible.append(prop)
-            seen.add(prop)
+        if prop not in prop_domains:
+            prop_domains[prop] = set()
+        prop_domains[prop].add(domain)
+
+    # 모든 domain이 ancestor 밖에 있을 때만 비호환
+    incompatible: list[str] = [
+        prop
+        for prop, domains in prop_domains.items()
+        if not domains.intersection(ancestors)
+    ]
 
     return incompatible
 

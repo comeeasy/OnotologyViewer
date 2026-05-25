@@ -20,8 +20,12 @@ import ClassHierarchyTree from './ClassHierarchyTree'
 
 const { Text } = Typography
 
-const ClassTable: React.FC = () => {
-  const { dataset, graph, graphs, namespace } = useOOI()
+interface ClassTableProps {
+  onNavigateToShacl?: (shapeIri: string) => void
+}
+
+const ClassTable: React.FC<ClassTableProps> = ({ onNavigateToShacl }) => {
+  const { dataset, graph, graphs, namespace, pendingNavigation, clearNavigation } = useOOI()
 
   const [rows, setRows] = useState<ClassSummary[]>([])
   const [loading, setLoading] = useState(false)
@@ -196,6 +200,15 @@ const ClassTable: React.FC = () => {
 
   const openDetail = (row: ClassSummary) => openDetailByIri(row.iri)
 
+  // SPARQL 탭에서 Class IRI 클릭 시 자동으로 Drawer 열기
+  useEffect(() => {
+    if (pendingNavigation?.tab !== 'classes' || !pendingNavigation.iri) return
+    const iri = pendingNavigation.iri
+    clearNavigation()
+    openDetailByIri(iri)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNavigation])
+
   const refreshDetail = async () => {
     if (!dataset || !graph || !drawerDetail) return
     try {
@@ -351,6 +364,7 @@ const ClassTable: React.FC = () => {
         onClose={() => setDrawerOpen(false)}
         onRefresh={refreshDetail}
         onClassSelect={openDetailByIri}
+        onNavigateToShacl={onNavigateToShacl}
       />
     </>
   )

@@ -11,6 +11,11 @@ export interface Namespace {
 }
 
 // ── OOI Context ────────────────────────────────────────
+export interface PendingNavigation {
+  tab: string   // 'classes' | 'individuals' | 'objprops' | 'dataprops'
+  iri: string
+}
+
 export interface OOIState {
   dataset: string | null
   /** 선택된 Named Graph IRI 배열 (복수 그래프 지원) */
@@ -21,6 +26,10 @@ export interface OOIState {
   namespace: string | null
   /** v02-I: 선택된 namespace 배열 */
   namespaces: string[]
+  /** SPARQL 결과에서 엔티티 클릭 시 탭 이동 */
+  pendingNavigation: PendingNavigation | null
+  navigate: (tab: string, iri: string) => void
+  clearNavigation: () => void
   setOOI: (dataset: string, graphs: string[], namespaces: string[]) => void
   clear: () => void
 }
@@ -36,8 +45,8 @@ export interface ClassSummary {
 export interface ClassDetail extends ClassSummary {
   super_classes: string[]
   sub_classes: string[]
-  object_properties: { iri: string; label: string | null; role: string }[]
-  data_properties: { iri: string; label: string | null; range: string | null }[]
+  object_properties: { iri: string; label: string | null; role: string; domain_class?: string | null; inherited?: boolean }[]
+  data_properties: { iri: string; label: string | null; range: string | null; domain_class?: string | null; inherited?: boolean }[]
   individual_count: number
 }
 

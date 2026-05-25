@@ -19,6 +19,8 @@ export interface ClassMappingItem {
   target_class: string
   identifier_field: string
   label: string | null
+  label_field: string
+  comment_field: string
   property_mappings: PropertyMappingItem[]
 }
 
@@ -75,7 +77,13 @@ export const addClassMapping = (
   dataset: string,
   graph: string,
   dsIri: string,
-  body: { target_class: string; identifier_field: string; label?: string },
+  body: {
+    target_class: string
+    identifier_field: string
+    label?: string
+    label_field?: string
+    comment_field?: string
+  },
 ): Promise<{ mapping_iri: string; target_class: string; identifier_field: string }> => {
   const encoded = encodeURIComponent(dsIri)
   return apiFetch('POST', `/api/datasources/${encoded}/mappings`, { dataset, graph, ...body })
@@ -128,4 +136,36 @@ export const addPropertyMapping = (
     `/api/datasources/${encodedDs}/mappings/${encodedMap}/properties`,
     { dataset, graph, ...body },
   )
+}
+
+
+export interface ImportResult {
+  imported_individuals: number
+  inserted_triples: number
+  skipped_rows: number
+  errors: string[]
+  graph: string
+}
+
+export const importDatasource = (
+  dataset: string,
+  graph: string,
+  dsIri: string,
+): Promise<ImportResult> => {
+  const encoded = encodeURIComponent(dsIri)
+  const params = new URLSearchParams({ dataset, graph })
+  return apiFetch<ImportResult>('POST', `/api/datasources/${encoded}/import?${params}`)
+}
+
+const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+
+export const uploadDatasourceFile = async (file: File): Promise<{ path: string; filename: string }> => {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE}/api/datasources/upload`, { method: 'POST', body: form })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail ?? `HTTP ${res.status}`)
+  }
+  return res.json()
 }

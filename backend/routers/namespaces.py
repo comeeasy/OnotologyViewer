@@ -170,12 +170,28 @@ def get_namespaces_in_graph(
     ds: str,
     graph: str = Query(..., description="Named Graph IRI"),
 ):
+    """
+    그래프 내 namespace 목록 반환.
+    - Custom: 명시 선언된(vann:preferredNamespacePrefix) 것만 포함
+    - Universal: 그래프 내 subject IRI에서 감지된 것 포함
+    """
     rows = sparql_query(ds, _Q_NS_IN_GRAPH.format(graph=graph))
     declared = _get_declared_prefixes(ds, graph)
-    return GraphNamespacesResponse(
-        graph=graph,
-        namespaces=[_to_namespace(r["ns"], declared) for r in rows],
-    )
+
+    result: list[Namespace] = []
+    seen: set[str] = set()
+    for r in rows:
+        ns = r["ns"]
+        if ns in seen:
+            continue
+        seen.add(ns)
+        ns_type = classify(ns)
+        if ns_type == "custom" and ns not in declared:
+            # 선언되지 않은 custom namespace는 노출하지 않음
+            continue
+        result.append(_to_namespace(ns, declared))
+
+    return GraphNamespacesResponse(graph=graph, namespaces=result)
 
 
 @router.post("/{ds}/graphs/namespaces", response_model=NsDeclResponse, status_code=201)

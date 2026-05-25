@@ -18,7 +18,7 @@ import IndividualDetailDrawer from './IndividualDetail'
 
 
 const IndividualTable: React.FC = () => {
-  const { dataset, graph, graphs, namespace } = useOOI()
+  const { dataset, graph, graphs, namespace, pendingNavigation, clearNavigation } = useOOI()
 
   const [rows, setRows] = useState<IndividualSummary[]>([])
   const [classes, setClasses] = useState<ClassSummary[]>([])
@@ -138,19 +138,29 @@ const IndividualTable: React.FC = () => {
   }
 
   // ── Detail ──
-  const openDetail = async (row: IndividualSummary) => {
+  const openDetailByIri = async (iri: string) => {
     if (!dataset || !graph) return
     setDrawerDetail(null)
     setDrawerOpen(true)
     setDrawerLoading(true)
     try {
-      setDrawerDetail(await getIndividual(dataset, graph, row.iri))
+      setDrawerDetail(await getIndividual(dataset, graph, iri))
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
       setDrawerLoading(false)
     }
   }
+  const openDetail = async (row: IndividualSummary) => openDetailByIri(row.iri)
+
+  // SPARQL 탭에서 Individual IRI 클릭 시 자동으로 Drawer 열기
+  useEffect(() => {
+    if (pendingNavigation?.tab !== 'individuals' || !pendingNavigation.iri) return
+    const iri = pendingNavigation.iri
+    clearNavigation()
+    openDetailByIri(iri)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNavigation])
 
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
   const classLabel = (iri: string) =>
@@ -216,6 +226,8 @@ const IndividualTable: React.FC = () => {
           style={{ width: 200 }}
           placeholder="Class 필터"
           allowClear
+          showSearch
+          optionFilterProp="label"
           options={classOptions}
           value={classFilter}
           onChange={(v) => setClassFilter(v || undefined)}

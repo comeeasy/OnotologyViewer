@@ -24,10 +24,11 @@ interface Props {
   onClose: () => void
   onRefresh: () => void        // 계층 편집 후 부모에게 reload 요청
   onClassSelect?: (iri: string) => void  // 다른 Class 상세로 이동
+  onNavigateToShacl?: (shapeIri: string) => void  // SHACL 탭으로 이동
 }
 
 const ClassDetailDrawer: React.FC<Props> = ({
-  open, detail, loading, allClasses, onClose, onRefresh, onClassSelect,
+  open, detail, loading, allClasses, onClose, onRefresh, onClassSelect, onNavigateToShacl,
 }) => {
   const { dataset, graph } = useOOI()
   const [selParent, setSelParent]   = useState<string | undefined>(undefined)
@@ -197,24 +198,42 @@ const ClassDetailDrawer: React.FC<Props> = ({
 
       <div>
         <Text strong>Object Properties</Text>
+        <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>상속 포함</Text>
         <Table
           size="small" rowKey="iri" style={{ marginTop: 4 }} pagination={false}
           dataSource={detail.object_properties}
           columns={[
             { title: 'Label', dataIndex: 'label', render: (v) => v ?? '-' },
             { title: 'Role', dataIndex: 'role', render: (v) => <Tag>{v}</Tag> },
+            {
+              title: '출처',
+              dataIndex: 'inherited',
+              render: (inherited, row) =>
+                inherited
+                  ? <Tag color="orange" title={row.domain_class ?? ''}>상속</Tag>
+                  : <Tag color="green">직접</Tag>,
+            },
           ]}
         />
       </div>
 
       <div>
         <Text strong>Data Properties</Text>
+        <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>상속 포함</Text>
         <Table
           size="small" rowKey="iri" style={{ marginTop: 4 }} pagination={false}
           dataSource={detail.data_properties}
           columns={[
             { title: 'Label', dataIndex: 'label', render: (v) => v ?? '-' },
             { title: 'Range', dataIndex: 'range', render: (v) => v ? v.split('#').pop() : '-' },
+            {
+              title: '출처',
+              dataIndex: 'inherited',
+              render: (inherited, row) =>
+                inherited
+                  ? <Tag color="orange" title={row.domain_class ?? ''}>상속</Tag>
+                  : <Tag color="green">직접</Tag>,
+            },
           ]}
         />
       </div>
@@ -386,10 +405,16 @@ const ClassDetailDrawer: React.FC<Props> = ({
               <List.Item>
                 <Space>
                   <Tag color="purple">NodeShape</Tag>
-                  <Text style={{ fontSize: 12 }}>{s.label ?? shortIRI(s.shape_iri)}</Text>
-                  <Text type="secondary" style={{ fontSize: 11 }} title={s.shape_iri}>
-                    {shortIRI(s.shape_iri)}
-                  </Text>
+                  {onNavigateToShacl ? (
+                    <a
+                      style={{ fontSize: 12 }}
+                      onClick={() => { onClose(); onNavigateToShacl(s.shape_iri) }}
+                    >
+                      {s.label ?? shortIRI(s.shape_iri)}
+                    </a>
+                  ) : (
+                    <Text style={{ fontSize: 12 }}>{s.label ?? shortIRI(s.shape_iri)}</Text>
+                  )}
                 </Space>
               </List.Item>
             )}

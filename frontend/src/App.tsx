@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Alert, Layout, Tabs, Typography } from 'antd'
 import { OOIProvider, useOOI } from './context/OOIContext'
 import OOINavigator from './components/Navigator/OOINavigator'
@@ -31,76 +31,101 @@ const OOIGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>
 }
 
-const tabItems = [
-  {
-    key: 'classes',
-    label: 'Class',
-    children: <OOIGuard><ClassTable /></OOIGuard>,
-  },
-  {
-    key: 'objprops',
-    label: 'Object Property',
-    children: <OOIGuard><ObjPropTable /></OOIGuard>,
-  },
-  {
-    key: 'dataprops',
-    label: 'Data Property',
-    children: <OOIGuard><DataPropTable /></OOIGuard>,
-  },
-  {
-    key: 'individuals',
-    label: 'Individual',
-    children: <OOIGuard><IndividualTable /></OOIGuard>,
-  },
-  {
-    key: 'sparql',
-    label: '🔍 SPARQL',
-    children: <OOIGuard><SparqlEditor /></OOIGuard>,
-  },
-  {
-    key: 'reasoning',
-    label: '🧠 Reasoning',
-    children: <OOIGuard><ReasoningPanel /></OOIGuard>,
-  },
-  {
-    key: 'shacl',
-    label: '🛡️ SHACL',
-    children: <OOIGuard><ShaclPanel /></OOIGuard>,
-  },
-  {
-    key: 'rules',
-    label: '⚡ Rules',
-    children: <OOIGuard><RulesPanel /></OOIGuard>,
-  },
-  {
-    key: 'datasources',
-    label: '🗄️ Datasources',
-    children: <OOIGuard><DatasourcesPanel /></OOIGuard>,
-  },
-]
+const AppInner: React.FC = () => {
+  const [activeTab, setActiveTab] = useState('classes')
+  const [pendingShapeIri, setPendingShapeIri] = useState<string | undefined>()
+  const { pendingNavigation } = useOOI()
 
-const AppInner: React.FC = () => (
-  <Layout style={{ minHeight: '100vh' }}>
-    <Header
-      style={{ display: 'flex', alignItems: 'center', padding: '0 24px', background: '#001529' }}
-    >
-      <Title level={4} style={{ color: '#fff', margin: 0 }}>🔷 OntologyViewer</Title>
-    </Header>
+  // SPARQL 결과 클릭 → 탭 이동
+  useEffect(() => {
+    if (pendingNavigation) {
+      setActiveTab(pendingNavigation.tab)
+    }
+  }, [pendingNavigation])
 
-    <Layout>
-      <Sider
-        width={260}
-        style={{ background: '#fff', borderRight: '1px solid #f0f0f0', overflowY: 'auto' }}
+  const navigateToShacl = (shapeIri: string) => {
+    setPendingShapeIri(shapeIri)
+    setActiveTab('shacl')
+  }
+
+  const tabItems = [
+    {
+      key: 'classes',
+      label: 'Class',
+      children: <OOIGuard><ClassTable onNavigateToShacl={navigateToShacl} /></OOIGuard>,
+    },
+    {
+      key: 'objprops',
+      label: 'Object Property',
+      children: <OOIGuard><ObjPropTable /></OOIGuard>,
+    },
+    {
+      key: 'dataprops',
+      label: 'Data Property',
+      children: <OOIGuard><DataPropTable /></OOIGuard>,
+    },
+    {
+      key: 'individuals',
+      label: 'Individual',
+      children: <OOIGuard><IndividualTable /></OOIGuard>,
+    },
+    {
+      key: 'sparql',
+      label: '🔍 SPARQL',
+      children: <OOIGuard><SparqlEditor /></OOIGuard>,
+    },
+    {
+      key: 'reasoning',
+      label: '🧠 Reasoning',
+      children: <OOIGuard><ReasoningPanel /></OOIGuard>,
+    },
+    {
+      key: 'shacl',
+      label: '🛡️ SHACL',
+      children: (
+        <OOIGuard>
+          <ShaclPanel
+            defaultOpenShapeIri={pendingShapeIri}
+            onOpenHandled={() => setPendingShapeIri(undefined)}
+          />
+        </OOIGuard>
+      ),
+    },
+    {
+      key: 'rules',
+      label: '⚡ Rules',
+      children: <OOIGuard><RulesPanel /></OOIGuard>,
+    },
+    {
+      key: 'datasources',
+      label: '🗄️ Datasources',
+      children: <OOIGuard><DatasourcesPanel /></OOIGuard>,
+    },
+  ]
+
+  return (
+    <Layout style={{ minHeight: '100vh' }}>
+      <Header
+        style={{ display: 'flex', alignItems: 'center', padding: '0 24px', background: '#001529' }}
       >
-        <OOINavigator />
-      </Sider>
+        <Title level={4} style={{ color: '#fff', margin: 0 }}>🔷 OntologyViewer</Title>
+      </Header>
 
-      <Content style={{ padding: '16px 24px', background: '#fafafa' }}>
-        <Tabs items={tabItems} size="large" />
-      </Content>
+      <Layout>
+        <Sider
+          width={260}
+          style={{ background: '#fff', borderRight: '1px solid #f0f0f0', overflowY: 'auto' }}
+        >
+          <OOINavigator />
+        </Sider>
+
+        <Content style={{ padding: '16px 24px', background: '#fafafa' }}>
+          <Tabs items={tabItems} size="large" activeKey={activeTab} onChange={setActiveTab} />
+        </Content>
+      </Layout>
     </Layout>
-  </Layout>
-)
+  )
+}
 
 const App: React.FC = () => (
   <OOIProvider>

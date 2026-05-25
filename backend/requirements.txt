@@ -7,3 +7,8 @@ rdflib>=7.0.0
 owlrl>=6.0.2
 pyshacl>=0.25.0
 python-multipart>=0.0.9
+# v05 datasource import engine
+jsonpath-ng>=1.6.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+pymysql>=1.1.0

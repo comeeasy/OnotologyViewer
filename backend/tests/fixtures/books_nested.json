@@ -1,0 +1,8 @@
+{
+  "data": {
+    "books": [
+      {"isbn": "978-1", "meta": {"title": "Nested Book 1", "year": 2024}},
+      {"isbn": "978-2", "meta": {"title": "Nested Book 2", "year": 2023}}
+    ]
+  }
+}

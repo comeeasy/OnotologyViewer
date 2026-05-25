@@ -2,8 +2,8 @@
  * v03-A SHACL Panel
  * - NodeShape 목록 + 생성
  * - PropertyShape 추가/삭제
- * - 그래프 전체 검증
- * - Individual 단위 검증
+ * - 그래프 전체 검증 (Focus Node = label + 클릭 시 Detail)
+ * - Individual 단위 검증 (label 기반 Select)
  */
 
 import React, { useEffect, useState } from 'react'
@@ -20,6 +20,15 @@ import {
   deletePropertyShape, deleteShape, validateGraph, validateIndividual,
 } from '../../api/shacl'
 import type { NodeShapeSummary, NodeShapeDetail, ViolationItem } from '../../api/shacl'
+import { listClasses } from '../../api/classes'
+import { listObjProps } from '../../api/objProps'
+import { listDataProps } from '../../api/dataProps'
+import { listIndividuals, getIndividual } from '../../api/individuals'
+import type {
+  ClassSummary, ObjPropSummary, DataPropSummary,
+  IndividualSummary, IndividualDetail,
+} from '../../types/ontology'
+import IndividualDetailDrawer from '../Individuals/IndividualDetail'
 
 const { Text, Title } = Typography
 const { Panel } = Collapse
@@ -33,6 +42,7 @@ interface AddPropFormProps {
   dataset: string
   graph: string
   shapeIri: string
+  propOptions: { label: string; value: string; title: string }[]
   onAdded: () => void
 }
 
@@ -45,7 +55,7 @@ const XSD_TYPES = [
   { value: 'http://www.w3.org/2001/XMLSchema#anyURI', label: 'xsd:anyURI' },
 ]
 
-const AddPropForm: React.FC<AddPropFormProps> = ({ dataset, graph, shapeIri, onAdded }) => {
+const AddPropForm: React.FC<AddPropFormProps> = ({ dataset, graph, shapeIri, propOptions, onAdded }) => {
   const [form] = Form.useForm()
   const [saving, setSaving] = useState(false)
 
@@ -72,8 +82,14 @@ const AddPropForm: React.FC<AddPropFormProps> = ({ dataset, graph, shapeIri, onA
 
   return (
     <Form form={form} layout="inline" style={{ marginTop: 8 }}>
-      <Form.Item name="path" rules={[{ required: true, message: 'Property IRI 필수' }]}>
-        <Input placeholder="sh:path (IRI)" style={{ width: 220 }} />
+      <Form.Item name="path" rules={[{ required: true, message: 'Property 선택 필수' }]}>
+        <Select
+          placeholder="sh:path (Property)"
+          style={{ width: 220 }}
+          showSearch
+          optionFilterProp="label"
+          options={propOptions}
+        />
       </Form.Item>
       <Form.Item name="min_count">
         <InputNumber placeholder="minCount" min={0} style={{ width: 90 }} />
@@ -107,11 +123,12 @@ interface ShapeDetailPanelProps {
   dataset: string
   graph: string
   shapeIri: string
+  propOptions: { label: string; value: string; title: string }[]
   onDeleted: () => void
 }
 
 const ShapeDetailPanel: React.FC<ShapeDetailPanelProps> = ({
-  dataset, graph, shapeIri, onDeleted,
+  dataset, graph, shapeIri, propOptions, onDeleted,
 }) => {
   const [detail, setDetail] = useState<NodeShapeDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -200,6 +217,7 @@ const ShapeDetailPanel: React.FC<ShapeDetailPanelProps> = ({
         dataset={dataset}
         graph={graph}
         shapeIri={shapeIri}
+        propOptions={propOptions}
         onAdded={reload}
       />
     </div>
@@ -208,30 +226,89 @@ const ShapeDetailPanel: React.FC<ShapeDetailPanelProps> = ({
 
 // ── Main Panel ────────────────────────────────────────────────────────────
 
-const ShaclPanel: React.FC = () => {
-  const { dataset, graph } = useOOI()
+interface ShaclPanelProps {
+  defaultOpenShapeIri?: string  // 이 IRI의 Collapse 패널을 자동 오픈
+  onOpenHandled?: () => void    // 오픈 처리 후 부모에게 알림 (state 초기화)
+}
+
+const ShaclPanel: React.FC<ShaclPanelProps> = ({ defaultOpenShapeIri, onOpenHandled }) => {
+  const { dataset, graph, graphs, namespace } = useOOI()
 
   const [shapes, setShapes] = useState<NodeShapeSummary[]>([])
   const [loadingShapes, setLoadingShapes] = useState(false)
+
+  // Class / Property / Individual 메타데이터
+  const [classes, setClasses] = useState<ClassSummary[]>([])
+  const [objProps, setObjProps] = useState<ObjPropSummary[]>([])
+  const [dataProps, setDataProps] = useState<DataPropSummary[]>([])
+  const [individuals, setIndividuals] = useState<IndividualSummary[]>([])
+  // Shape target class 기준으로 필터링된 Individual 목록
+  const [targetIndividuals, setTargetIndividuals] = useState<IndividualSummary[]>([])
+
+  // Collapse 열린 패널 key
+  const [collapseKey, setCollapseKey] = useState<string | undefined>(undefined)
 
   // Create shape form
   const [createForm] = Form.useForm()
   const [creating, setCreating] = useState(false)
 
-  // Validation
+  // 그래프 전체 검증
   const [validating, setValidating] = useState(false)
   const [validResult, setValidResult] = useState<{
     conforms: boolean
     violations: ViolationItem[]
   } | null>(null)
 
-  // Individual validation
-  const [indIri, setIndIri] = useState('')
+  // Individual 단위 검증
+  const [indIri, setIndIri] = useState<string | undefined>(undefined)
   const [validatingInd, setValidatingInd] = useState(false)
   const [indResult, setIndResult] = useState<{
     conforms: boolean
     violations: ViolationItem[]
   } | null>(null)
+
+  // Individual Detail Drawer
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerDetail, setDrawerDetail] = useState<IndividualDetail | null>(null)
+  const [drawerLoading, setDrawerLoading] = useState(false)
+
+  const shortLabel = (iri: string) => iri.split(/[#/]/).pop() ?? iri
+  const indLabel = (iri: string) =>
+    individuals.find((i) => i.iri === iri)?.label ?? shortLabel(iri)
+
+  const openIndividualDetail = async (iri: string) => {
+    if (!dataset || !graph) return
+    setDrawerDetail(null)
+    setDrawerOpen(true)
+    setDrawerLoading(true)
+    try {
+      setDrawerDetail(await getIndividual(dataset, graph, iri))
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setDrawerLoading(false)
+    }
+  }
+
+  const reloadTargetIndividuals = async (loadedShapes: NodeShapeSummary[]) => {
+    if (!dataset || graphs.length === 0 || !namespace) return
+    const targetClasses = [...new Set(loadedShapes.map((s) => s.target_class))]
+    if (targetClasses.length === 0) { setTargetIndividuals([]); return }
+    try {
+      const results = await Promise.all(
+        targetClasses.map((cls) => listIndividuals(dataset, graphs, namespace, cls))
+      )
+      // 중복 제거 (한 individual이 여러 target class에 걸칠 수 있음)
+      const seen = new Set<string>()
+      const merged: IndividualSummary[] = []
+      for (const list of results) {
+        for (const ind of list) {
+          if (!seen.has(ind.iri)) { seen.add(ind.iri); merged.push(ind) }
+        }
+      }
+      setTargetIndividuals(merged)
+    } catch { /* 무시 */ }
+  }
 
   const reloadShapes = async () => {
     if (!dataset || !graph) return
@@ -239,6 +316,7 @@ const ShaclPanel: React.FC = () => {
     try {
       const data = await listShapes(dataset, graph)
       setShapes(data)
+      await reloadTargetIndividuals(data)
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
@@ -246,9 +324,28 @@ const ShaclPanel: React.FC = () => {
     }
   }
 
+  // defaultOpenShapeIri가 주어지면 해당 Collapse 자동 오픈
+  useEffect(() => {
+    if (!defaultOpenShapeIri) return
+    setCollapseKey(defaultOpenShapeIri)
+    onOpenHandled?.()
+  }, [defaultOpenShapeIri])
+
   useEffect(() => {
     reloadShapes()
-  }, [dataset, graph])
+    if (!dataset || graphs.length === 0 || !namespace) return
+    Promise.all([
+      listClasses(dataset, graphs, namespace),
+      listObjProps(dataset, graphs, namespace),
+      listDataProps(dataset, graphs, namespace),
+      listIndividuals(dataset, graphs, namespace),
+    ]).then(([cls, op, dp, inds]) => {
+      setClasses(cls)
+      setObjProps(op)
+      setDataProps(dp)
+      setIndividuals(inds)
+    }).catch(() => {})
+  }, [dataset, graph, graphs, namespace])
 
   const handleCreateShape = async () => {
     const vals = await createForm.validateFields()
@@ -293,15 +390,24 @@ const ShaclPanel: React.FC = () => {
     }
   }
 
+  // Focus Node: label 클릭 시 Detail Drawer 오픈
   const violationColumns = [
     {
       title: 'Focus Node',
       dataIndex: 'focus_node',
       key: 'fn',
-      ellipsis: true,
-      render: (v: string | null) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 11 }}>{v ? shortIRI(v) : '-'}</Text>
-      ),
+      render: (v: string | null) =>
+        v ? (
+          <a
+            style={{ fontSize: 11 }}
+            title={v}
+            onClick={() => openIndividualDetail(v)}
+          >
+            {indLabel(v)}
+          </a>
+        ) : (
+          <Text style={{ fontSize: 11 }}>-</Text>
+        ),
     },
     {
       title: 'Result Path',
@@ -321,6 +427,19 @@ const ShaclPanel: React.FC = () => {
     },
   ]
 
+  const classOptions = classes.map((c) => ({
+    label: c.label ?? shortLabel(c.iri),
+    value: c.iri,
+    title: c.iri,
+  }))
+
+  // Shape가 있으면 target class 기준 필터링, 없으면 전체
+  const indOptions = (targetIndividuals.length > 0 ? targetIndividuals : individuals).map((i) => ({
+    label: i.label ?? shortLabel(i.iri),
+    value: i.iri,
+    title: i.iri,
+  }))
+
   return (
     <div style={{ padding: '8px 0' }}>
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -332,12 +451,14 @@ const ShaclPanel: React.FC = () => {
       <Form form={createForm} layout="inline" style={{ marginBottom: 12 }}>
         <Form.Item
           name="target_class"
-          rules={[{ required: true, message: 'targetClass IRI 필수' }]}
+          rules={[{ required: true, message: 'Target Class 선택 필수' }]}
         >
-          <Input
-            placeholder="sh:targetClass (IRI)"
-            style={{ width: 260 }}
-            prefix={<Tag style={{ margin: 0 }}>Class IRI</Tag>}
+          <Select
+            placeholder="Target Class"
+            style={{ width: 220 }}
+            showSearch
+            optionFilterProp="label"
+            options={classOptions}
           />
         </Form.Item>
         <Form.Item name="label">
@@ -361,26 +482,47 @@ const ShaclPanel: React.FC = () => {
         {shapes.length === 0 ? (
           <Alert type="info" showIcon message="SHACL Shape이 없습니다. NodeShape를 추가하세요." />
         ) : (
-          <Collapse accordion>
-            {shapes.map((shape) => (
-              <Panel
-                key={shape.shape_iri}
-                header={
-                  <Space>
-                    <SafetyOutlined />
-                    <Text strong>{shape.label ?? 'NodeShape'}</Text>
-                    <Tag>{shortIRI(shape.target_class, 40)}</Tag>
-                  </Space>
-                }
-              >
-                <ShapeDetailPanel
-                  dataset={dataset!}
-                  graph={graph!}
-                  shapeIri={shape.shape_iri}
-                  onDeleted={reloadShapes}
-                />
-              </Panel>
-            ))}
+          <Collapse
+            accordion
+            activeKey={collapseKey}
+            onChange={(k) => setCollapseKey(Array.isArray(k) ? k[0] : k as string | undefined)}
+          >
+            {shapes.map((shape) => {
+              const propOptions = [
+                ...objProps.map((p) => ({
+                  label: p.label ?? shortLabel(p.iri),
+                  value: p.iri,
+                  title: p.iri,
+                })),
+                ...dataProps.map((p) => ({
+                  label: p.label ?? shortLabel(p.iri),
+                  value: p.iri,
+                  title: p.iri,
+                })),
+              ]
+              const targetLabel = classes.find((c) => c.iri === shape.target_class)?.label
+                ?? shortLabel(shape.target_class)
+              return (
+                <Panel
+                  key={shape.shape_iri}
+                  header={
+                    <Space>
+                      <SafetyOutlined />
+                      <Text strong>{shape.label ?? 'NodeShape'}</Text>
+                      <Tag>{targetLabel}</Tag>
+                    </Space>
+                  }
+                >
+                  <ShapeDetailPanel
+                    dataset={dataset!}
+                    graph={graph!}
+                    shapeIri={shape.shape_iri}
+                    propOptions={propOptions}
+                    onDeleted={reloadShapes}
+                  />
+                </Panel>
+              )
+            })}
           </Collapse>
         )}
       </Spin>
@@ -426,11 +568,15 @@ const ShaclPanel: React.FC = () => {
       {/* Individual 단위 검증 */}
       <Space wrap style={{ marginBottom: 8 }}>
         <Text strong>Individual 검증</Text>
-        <Input
-          placeholder="Individual IRI"
-          style={{ width: 300 }}
+        <Select
+          placeholder="Individual 선택"
+          style={{ width: 260 }}
+          showSearch
+          optionFilterProp="label"
+          allowClear
+          options={indOptions}
           value={indIri}
-          onChange={(e) => setIndIri(e.target.value)}
+          onChange={(v) => { setIndIri(v); setIndResult(null) }}
         />
         <Button
           loading={validatingInd}
@@ -460,6 +606,21 @@ const ShaclPanel: React.FC = () => {
           )}
         </>
       )}
+
+      {/* Individual Detail Drawer */}
+      <IndividualDetailDrawer
+        open={drawerOpen}
+        detail={drawerDetail}
+        loading={drawerLoading}
+        dataset={dataset ?? ''}
+        graph={graph ?? ''}
+        namespaces={namespace ? [namespace] : []}
+        allClasses={classes}
+        allDataProps={dataProps}
+        allObjProps={objProps}
+        onClose={() => setDrawerOpen(false)}
+        onRefresh={() => {}}
+      />
     </div>
   )
 }

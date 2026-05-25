@@ -13,7 +13,7 @@ import DataPropDetailDrawer from './DataPropDetail'
 
 
 const DataPropTable: React.FC = () => {
-  const { dataset, graph, graphs, namespace } = useOOI()
+  const { dataset, graph, graphs, namespace, pendingNavigation, clearNavigation } = useOOI()
 
   const [rows, setRows] = useState<DataPropSummary[]>([])
   const [classes, setClasses] = useState<ClassSummary[]>([])
@@ -100,19 +100,29 @@ const DataPropTable: React.FC = () => {
     }
   }
 
-  const openDetail = async (row: DataPropSummary) => {
+  const openDetailByIri = async (iri: string) => {
     if (!dataset || !graph) return
     setDrawerDetail(null)
     setDrawerOpen(true)
     setDrawerLoading(true)
     try {
-      setDrawerDetail(await getDataProp(dataset, graph, row.iri))
+      setDrawerDetail(await getDataProp(dataset, graph, iri))
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
       setDrawerLoading(false)
     }
   }
+  const openDetail = async (row: DataPropSummary) => openDetailByIri(row.iri)
+
+  // SPARQL 탭에서 DataProp IRI 클릭 시 자동으로 Drawer 열기
+  useEffect(() => {
+    if (pendingNavigation?.tab !== 'dataprops' || !pendingNavigation.iri) return
+    const iri = pendingNavigation.iri
+    clearNavigation()
+    openDetailByIri(iri)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNavigation])
 
   const shortIRI = (iri: string | null) => iri?.split(/[#/]/).pop() ?? '-'
   const classLabel = (iri: string | null) => {

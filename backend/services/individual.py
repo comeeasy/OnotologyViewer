@@ -173,7 +173,8 @@ def list_individuals(
         _validate_iri(ns)
     if class_iri:
         _validate_iri(class_iri)
-        class_filter = f'FILTER(?class = <{class_iri}>)'
+        # rdfs:subClassOf* — 지정 클래스 본인 + 모든 하위 클래스 포함
+        class_filter = f'?class rdfs:subClassOf* <{class_iri}> .'
     else:
         class_filter = ""
     rows = sparql_query(dataset, _Q_LIST.format(

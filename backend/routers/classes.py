@@ -38,15 +38,19 @@ class ClassesResponse(BaseModel):
 
 
 class ObjectPropertyRef(BaseModel):
-    iri:   str
-    label: str | None
-    role:  str          # "domain" | "range"
+    iri:          str
+    label:        str | None
+    role:         str           # "domain" | "range"
+    domain_class: str | None = None
+    inherited:    bool = False
 
 
 class DataPropertyRef(BaseModel):
-    iri:   str
-    label: str | None
-    range: str | None
+    iri:          str
+    label:        str | None
+    range:        str | None
+    domain_class: str | None = None
+    inherited:    bool = False
 
 
 class ClassDetail(BaseModel):

@@ -12,7 +12,7 @@ import ObjPropDetailDrawer from './ObjPropDetail'
 
 
 const ObjPropTable: React.FC = () => {
-  const { dataset, graph, graphs, namespace } = useOOI()
+  const { dataset, graph, graphs, namespace, pendingNavigation, clearNavigation } = useOOI()
 
   const [rows, setRows] = useState<ObjPropSummary[]>([])
   const [classes, setClasses] = useState<ClassSummary[]>([])
@@ -114,6 +114,15 @@ const ObjPropTable: React.FC = () => {
       setDrawerLoading(false)
     }
   }
+
+  // SPARQL 탭에서 ObjProp IRI 클릭 시 자동으로 Drawer 열기
+  useEffect(() => {
+    if (pendingNavigation?.tab !== 'objprops' || !pendingNavigation.iri) return
+    const iri = pendingNavigation.iri
+    clearNavigation()
+    openDetailByIri(iri)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNavigation])
 
   const refreshDetail = async () => {
     if (!dataset || !graph || !drawerDetail) return

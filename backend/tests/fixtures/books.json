@@ -1,0 +1,7 @@
+[
+  {"isbn": "978-89-6848-101-8", "title": "시맨틱 웹 입문", "publishYear": 2024},
+  {"isbn": "978-89-6848-102-5", "title": "온톨로지 설계", "publishYear": 2023},
+  {"isbn": "978-89-6848-103-2", "title": "SPARQL 마스터", "publishYear": 2024},
+  {"isbn": "978-89-6848-104-9", "title": "지식 표현과 추론", "publishYear": 2023},
+  {"isbn": "978-89-6848-105-6", "title": "RDF와 연결 데이터", "publishYear": 2025}
+]

@@ -91,12 +91,13 @@ _Q_OBJECT_PROPS = """
 PREFIX owl:  <http://www.w3.org/2002/07/owl#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT DISTINCT ?prop ?label ?role WHERE {{
+SELECT DISTINCT ?prop ?label ?role ?domainClass WHERE {{
   GRAPH <{graph}> {{
     ?prop a owl:ObjectProperty .
     OPTIONAL {{ ?prop rdfs:label ?label }}
     {{
-      ?prop rdfs:domain <{class_iri}> .
+      ?prop rdfs:domain ?domainClass .
+      <{class_iri}> rdfs:subClassOf* ?domainClass .
       BIND("domain" AS ?role)
     }} UNION {{
       ?prop rdfs:range <{class_iri}> .
@@ -110,10 +111,11 @@ _Q_DATA_PROPS = """
 PREFIX owl:  <http://www.w3.org/2002/07/owl#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?prop ?label ?range WHERE {{
+SELECT DISTINCT ?prop ?label ?range ?domainClass WHERE {{
   GRAPH <{graph}> {{
-    ?prop a owl:DatatypeProperty ;
-          rdfs:domain <{class_iri}> .
+    ?prop a owl:DatatypeProperty .
+    ?prop rdfs:domain ?domainClass .
+    <{class_iri}> rdfs:subClassOf* ?domainClass .
     OPTIONAL {{ ?prop rdfs:label ?label }}
     OPTIONAL {{ ?prop rdfs:range ?range }}
   }}
@@ -336,12 +338,24 @@ def get_class_detail(dataset: str, graph: str, class_iri: str) -> dict | None:
     subs   = [r["sub"]   for r in sparql_query(dataset, _Q_SUB_CLASSES.format(graph=graph, class_iri=class_iri))]
 
     obj_props = [
-        {"iri": r["prop"], "label": r.get("label"), "role": r["role"]}
+        {
+            "iri":          r["prop"],
+            "label":        r.get("label"),
+            "role":         r.get("role"),
+            "domain_class": r.get("domainClass"),
+            "inherited":    r.get("role") == "domain" and r.get("domainClass") != class_iri,
+        }
         for r in sparql_query(dataset, _Q_OBJECT_PROPS.format(graph=graph, class_iri=class_iri))
     ]
 
     data_props = [
-        {"iri": r["prop"], "label": r.get("label"), "range": r.get("range")}
+        {
+            "iri":          r["prop"],
+            "label":        r.get("label"),
+            "range":        r.get("range"),
+            "domain_class": r.get("domainClass"),
+            "inherited":    r.get("domainClass") != class_iri,
+        }
         for r in sparql_query(dataset, _Q_DATA_PROPS.format(graph=graph, class_iri=class_iri))
     ]
 

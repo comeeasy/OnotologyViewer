@@ -6,7 +6,7 @@ from fuseki.sparql import query as sparql_query, update as sparql_update
 ONTO_NS = "http://ontologyviewer.io/ontology/datasource#"
 RDFS_NS = "http://www.w3.org/2000/01/rdf-schema#"
 
-SUPPORTED_TYPES = {"csv", "json", "rest", "sparql"}
+SUPPORTED_TYPES = {"csv", "json", "rest", "sparql", "rdb"}
 
 
 def _ds_graph_iri(graph: str) -> str:
@@ -154,13 +154,15 @@ def _get_mappings_for_ds(dataset: str, ds_graph: str, ds_iri: str) -> list[dict]
     map_rows = sparql_query(dataset, f"""
     PREFIX onto: <{ONTO_NS}>
     PREFIX rdfs: <{RDFS_NS}>
-    SELECT ?mapping ?targetClass ?idField ?mlabel WHERE {{
+    SELECT ?mapping ?targetClass ?idField ?mlabel ?labelField ?commentField WHERE {{
       GRAPH <{ds_graph}> {{
         ?mapping a onto:ClassMapping ;
                  onto:datasource <{ds_iri}> ;
                  onto:targetClass ?targetClass ;
                  onto:identifierField ?idField .
         OPTIONAL {{ ?mapping rdfs:label ?mlabel }}
+        OPTIONAL {{ ?mapping onto:labelField ?labelField }}
+        OPTIONAL {{ ?mapping onto:commentField ?commentField }}
       }}
     }}
     ORDER BY ?mapping
@@ -197,6 +199,8 @@ def _get_mappings_for_ds(dataset: str, ds_graph: str, ds_iri: str) -> list[dict]
             "target_class": m["targetClass"],
             "identifier_field": m["idField"],
             "label": m.get("mlabel"),
+            "label_field": m.get("labelField", ""),
+            "comment_field": m.get("commentField", ""),
             "property_mappings": property_mappings,
         })
 
@@ -313,6 +317,8 @@ def add_class_mapping(
     target_class: str,
     identifier_field: str,
     label: str | None = None,
+    label_field: str | None = None,
+    comment_field: str | None = None,
 ) -> dict:
     """
     ClassMapping 추가.
@@ -331,6 +337,16 @@ def add_class_mapping(
         esc_label = _escape(label)
         label_triple = f'<{mapping_iri}> rdfs:label "{esc_label}" .'
 
+    label_field_triple = ""
+    if label_field:
+        esc_lf = _escape(label_field)
+        label_field_triple = f'<{mapping_iri}> onto:labelField "{esc_lf}" .'
+
+    comment_field_triple = ""
+    if comment_field:
+        esc_cf = _escape(comment_field)
+        comment_field_triple = f'<{mapping_iri}> onto:commentField "{esc_cf}" .'
+
     sparql_update(dataset, f"""
     PREFIX onto: <{ONTO_NS}>
     PREFIX rdfs: <{RDFS_NS}>
@@ -341,10 +357,18 @@ def add_class_mapping(
             onto:targetClass <{target_class}> ;
             onto:identifierField "{esc_field}" .
         {label_triple}
+        {label_field_triple}
+        {comment_field_triple}
       }}
     }}
     """)
-    return {"mapping_iri": mapping_iri, "target_class": target_class, "identifier_field": identifier_field}
+    return {
+        "mapping_iri": mapping_iri,
+        "target_class": target_class,
+        "identifier_field": identifier_field,
+        "label_field": label_field or "",
+        "comment_field": comment_field or "",
+    }
 
 
 def delete_class_mapping(
@@ -431,15 +455,30 @@ def preview_datasource(dataset: str, graph: str, ds_iri: str, limit: int = 10) -
         import httpx  # 런타임 import — 선택적 의존성
 
         if ds_type in ("csv",):
-            resp = httpx.get(conn, timeout=5, follow_redirects=True)
-            resp.raise_for_status()
-            lines = resp.text.splitlines()
+            if conn.startswith(("http://", "https://")):
+                resp = httpx.get(conn, timeout=5, follow_redirects=True)
+                resp.raise_for_status()
+                lines = resp.text.splitlines()
+            else:
+                # 로컬 파일 경로
+                import os
+                if not os.path.isfile(conn):
+                    raise FileNotFoundError(f"파일을 찾을 수 없습니다: {conn}")
+                with open(conn, "r", encoding="utf-8") as f:
+                    lines = f.read().splitlines()
             result["rows"] = [l for l in lines[:limit + 1]]  # 헤더 포함
 
         elif ds_type in ("json",):
-            resp = httpx.get(conn, timeout=5, follow_redirects=True)
-            resp.raise_for_status()
-            data = resp.json()
+            if conn.startswith(("http://", "https://")):
+                resp = httpx.get(conn, timeout=5, follow_redirects=True)
+                resp.raise_for_status()
+                data = resp.json()
+            else:
+                import json, os
+                if not os.path.isfile(conn):
+                    raise FileNotFoundError(f"파일을 찾을 수 없습니다: {conn}")
+                with open(conn, "r", encoding="utf-8") as f:
+                    data = json.load(f)
             if isinstance(data, list):
                 result["rows"] = data[:limit]
             elif isinstance(data, dict):

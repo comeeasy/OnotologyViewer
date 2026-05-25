@@ -1,14 +1,21 @@
 """v03-C Datasource Router — Datasource 매핑 엔드포인트."""
 
-from fastapi import APIRouter, HTTPException, Query
+import os
+import shutil
+
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, field_validator
 from urllib.parse import unquote
 
+UPLOAD_DIR = "/tmp/ontologyviewer_uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 from services import datasources as ds_svc
+from services.datasource_import import import_datasource
 
 router = APIRouter(prefix="/api/datasources", tags=["datasources"])
 
-SUPPORTED_TYPES = {"csv", "json", "rest", "sparql"}
+SUPPORTED_TYPES = {"csv", "json", "rest", "sparql", "rdb"}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -53,6 +60,8 @@ class AddClassMappingBody(BaseModel):
     target_class: str
     identifier_field: str
     label: str | None = None
+    label_field: str | None = None    # 소스 필드 → rdfs:label 자동 매핑
+    comment_field: str | None = None  # 소스 필드 → rdfs:comment 자동 매핑
 
     @field_validator("target_class")
     @classmethod
@@ -87,6 +96,8 @@ class ClassMappingItem(BaseModel):
     target_class: str
     identifier_field: str
     label: str | None = None
+    label_field: str = ""
+    comment_field: str = ""
     property_mappings: list[PropertyMappingItem] = []
 
 
@@ -110,6 +121,14 @@ class DeleteResponse(BaseModel):
     deleted: str
 
 
+class ImportResultResponse(BaseModel):
+    imported_individuals: int
+    inserted_triples: int
+    skipped_rows: int
+    errors: list[str]
+    graph: str
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Endpoints
 # ──────────────────────────────────────────────────────────────────────────────
@@ -121,6 +140,20 @@ def get_datasources(
 ):
     """Datasource 목록."""
     return ds_svc.list_datasources(dataset, graph)
+
+
+@router.post("/upload", status_code=201)
+async def upload_datasource_file(file: UploadFile = File(...)):
+    """
+    CSV/JSON 파일 업로드 → 컨테이너 내 저장 후 경로 반환.
+    프론트엔드에서 connection_info 자동 입력에 사용.
+    """
+    # 안전한 파일명만 허용
+    filename = os.path.basename(file.filename or "upload")
+    dest = os.path.join(UPLOAD_DIR, filename)
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    return {"path": dest, "filename": filename}
 
 
 @router.post("", response_model=CreateDatasourceResponse, status_code=201)
@@ -192,9 +225,37 @@ def post_class_mapping(ds_iri: str, body: AddClassMappingBody):
         return ds_svc.add_class_mapping(
             body.dataset, body.graph, ds_iri_decoded,
             body.target_class, body.identifier_field, body.label,
+            body.label_field, body.comment_field,
         )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{iri:path}/import", response_model=ImportResultResponse)
+def post_import_datasource(
+    iri: str,
+    dataset: str = Query(...),
+    graph: str = Query(...),
+):
+    """Datasource Import 실행 — 외부 소스 데이터를 Fuseki Named Graph에 적재."""
+    ds_iri = unquote(iri)
+    if ds_iri.endswith("/import"):
+        ds_iri = ds_iri[: -len("/import")]
+
+    try:
+        result = import_datasource(dataset, graph, ds_iri)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "imported_individuals": result.imported_individuals,
+        "inserted_triples": result.inserted_triples,
+        "skipped_rows": result.skipped_rows,
+        "errors": result.errors,
+        "graph": result.graph,
+    }
 
 
 @router.get("/{iri:path}/preview", response_model=dict)

@@ -146,20 +146,38 @@ async def test_tc04_graph_created_after_insert(client, insert_test_data):
 @pytest.mark.asyncio
 async def test_tc05_custom_namespace_in_graph(client, insert_test_data):
     """
-    테스트 graph 의 namespace 목록에서 Custom IRI 의 base 가
-    type='custom', prefix=None 으로 분류되어야 한다.
+    Custom namespace 는 선언(vann:preferredNamespacePrefix) 후에만
+    그래프 namespace 목록에 노출된다.
+    선언 전에는 목록에 없고, 선언 후에는 지정한 prefix 와 type='custom' 으로 반환.
     """
+    # 선언 전: 미선언 custom namespace 는 목록에 없음
     resp = await client.get(
         f"/api/datasets/{DS}/graphs/namespaces",
         params={"graph": TEST_GRAPH},
     )
     assert resp.status_code == 200
-    namespaces = resp.json()["namespaces"]
+    before = resp.json()["namespaces"]
+    assert not any(n["base_iri"] == CUSTOM_NS for n in before), \
+        f"선언 전 {CUSTOM_NS} 가 목록에 노출되면 안 됨: {before}"
 
-    custom = next((n for n in namespaces if n["base_iri"] == CUSTOM_NS), None)
-    assert custom is not None, f"{CUSTOM_NS} not found in {namespaces}"
+    # namespace 선언
+    decl = await client.post(
+        f"/api/datasets/{DS}/graphs/namespaces",
+        json={"graph": TEST_GRAPH, "ns_iri": CUSTOM_NS, "prefix": "testns"},
+    )
+    assert decl.status_code == 201, decl.text
+
+    # 선언 후: type='custom', prefix='testns' 로 반환
+    resp2 = await client.get(
+        f"/api/datasets/{DS}/graphs/namespaces",
+        params={"graph": TEST_GRAPH},
+    )
+    assert resp2.status_code == 200
+    after = resp2.json()["namespaces"]
+    custom = next((n for n in after if n["base_iri"] == CUSTOM_NS), None)
+    assert custom is not None, f"{CUSTOM_NS} not found after declaration: {after}"
     assert custom["type"] == "custom", f"Expected custom, got {custom['type']}"
-    assert custom["prefix"] is None, f"Expected None prefix, got {custom['prefix']}"
+    assert custom["prefix"] == "testns", f"Expected 'testns', got {custom['prefix']}"
 
 
 # ────────────────────────────────────────────────

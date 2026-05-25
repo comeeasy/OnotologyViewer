@@ -1,25 +1,29 @@
 /**
- * v03-C Datasource 매핑 Panel
+ * v03-D Datasource 매핑 Panel
  * - Datasource 목록 + 생성
- * - ClassMapping 관리
- * - PropertyMapping 관리
+ * - ClassMapping: targetClass → Select(레이블 기반)
+ * - PropertyMapping: targetProperty → Select(레이블 기반)
  */
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Alert, Button, Card, Collapse, Descriptions, Form, Input, List,
   Popconfirm, Select, Space, Tag, Typography, message,
 } from 'antd'
 import {
-  DatabaseOutlined, DeleteOutlined, EyeOutlined, PlusOutlined,
+  DatabaseOutlined, DeleteOutlined, EyeOutlined, ImportOutlined, PlusOutlined, UploadOutlined,
 } from '@ant-design/icons'
 import { useOOI } from '../../context/OOIContext'
 import {
   listDatasources, createDatasource, getDatasource,
   deleteDatasource, addClassMapping, deleteClassMapping, addPropertyMapping,
-  previewDatasource,
+  previewDatasource, uploadDatasourceFile, importDatasource,
 } from '../../api/datasources'
-import type { DatasourceSummary, DatasourceDetail, ClassMappingItem } from '../../api/datasources'
+import type { DatasourceSummary, DatasourceDetail, ClassMappingItem, ImportResult } from '../../api/datasources'
+import { listClasses } from '../../api/classes'
+import { listObjProps } from '../../api/objProps'
+import { listDataProps } from '../../api/dataProps'
+import type { ClassSummary, ObjPropSummary, DataPropSummary } from '../../types/ontology'
 
 const { Text, Title } = Typography
 const { Panel } = Collapse
@@ -31,8 +35,7 @@ const DS_TYPES = [
   { value: 'sparql', label: 'SPARQL' },
 ]
 
-const shortIRI = (iri: string, max = 50) =>
-  iri.length > max ? '…' + iri.slice(-(max - 1)) : iri
+const localName = (iri: string) => iri.split(/[#/]/).filter(Boolean).pop() ?? iri
 
 // ── PropertyMapping 추가 폼 ───────────────────────────────────────────────
 
@@ -41,14 +44,35 @@ interface PropMappingFormProps {
   graph: string
   dsIri: string
   mappingIri: string
+  objProps: ObjPropSummary[]
+  dataProps: DataPropSummary[]
   onAdded: () => void
 }
 
 const PropMappingForm: React.FC<PropMappingFormProps> = ({
-  dataset, graph, dsIri, mappingIri, onAdded,
+  dataset, graph, dsIri, mappingIri, objProps, dataProps, onAdded,
 }) => {
   const [form] = Form.useForm()
   const [saving, setSaving] = useState(false)
+
+  const propOptions = useMemo(() => [
+    {
+      label: 'Object Property',
+      options: objProps.map((p) => ({
+        label: p.label ?? localName(p.iri),
+        value: p.iri,
+        title: p.iri,
+      })),
+    },
+    {
+      label: 'Data Property',
+      options: dataProps.map((p) => ({
+        label: p.label ?? localName(p.iri),
+        value: p.iri,
+        title: p.iri,
+      })),
+    },
+  ], [objProps, dataProps])
 
   const handleAdd = async () => {
     const vals = await form.validateFields()
@@ -71,10 +95,17 @@ const PropMappingForm: React.FC<PropMappingFormProps> = ({
   return (
     <Form form={form} layout="inline" style={{ marginTop: 8 }}>
       <Form.Item name="source_field" rules={[{ required: true }]}>
-        <Input placeholder="소스 필드명" style={{ width: 140 }} />
+        <Input placeholder="소스 필드명" style={{ width: 130 }} />
       </Form.Item>
       <Form.Item name="target_property" rules={[{ required: true }]}>
-        <Input placeholder="타겟 Property IRI" style={{ width: 240 }} />
+        <Select
+          placeholder="타겟 Property"
+          style={{ width: 200 }}
+          options={propOptions}
+          showSearch
+          optionFilterProp="label"
+          allowClear
+        />
       </Form.Item>
       <Form.Item>
         <Button size="small" type="primary" loading={saving} onClick={handleAdd} icon={<PlusOutlined />}>
@@ -92,12 +123,18 @@ interface ClassMappingCardProps {
   dataset: string
   graph: string
   dsIri: string
+  classMap: Map<string, string>   // iri → label
+  propLabelMap: Map<string, string>
+  objProps: ObjPropSummary[]
+  dataProps: DataPropSummary[]
   onDeleted: () => void
   onPropAdded: () => void
 }
 
 const ClassMappingCard: React.FC<ClassMappingCardProps> = ({
-  mapping, dataset, graph, dsIri, onDeleted, onPropAdded,
+  mapping, dataset, graph, dsIri,
+  classMap, propLabelMap, objProps, dataProps,
+  onDeleted, onPropAdded,
 }) => {
   const handleDeleteMapping = async () => {
     try {
@@ -109,13 +146,15 @@ const ClassMappingCard: React.FC<ClassMappingCardProps> = ({
     }
   }
 
+  const classLabel = classMap.get(mapping.target_class) ?? localName(mapping.target_class)
+
   return (
     <Card
       size="small"
       title={
         <Space>
           <Tag color="blue">Class</Tag>
-          <Text code style={{ fontSize: 11 }}>{shortIRI(mapping.target_class, 45)}</Text>
+          <Text strong style={{ fontSize: 13 }}>{classLabel}</Text>
           {mapping.label && <Text type="secondary" style={{ fontSize: 11 }}>({mapping.label})</Text>}
         </Space>
       }
@@ -126,7 +165,15 @@ const ClassMappingCard: React.FC<ClassMappingCardProps> = ({
       }
       style={{ marginBottom: 6 }}
     >
-      <Text style={{ fontSize: 12 }}>ID 필드: <Text code>{mapping.identifier_field}</Text></Text>
+      <Space size={16} style={{ display: 'flex', flexWrap: 'wrap', marginBottom: 4 }}>
+        <Text style={{ fontSize: 12 }}>식별자 (PK): <Text code>{mapping.identifier_field}</Text></Text>
+        {mapping.label_field && (
+          <Text style={{ fontSize: 12 }}>rdfs:label ← <Text code>{mapping.label_field}</Text></Text>
+        )}
+        {mapping.comment_field && (
+          <Text style={{ fontSize: 12 }}>rdfs:comment ← <Text code>{mapping.comment_field}</Text></Text>
+        )}
+      </Space>
 
       <div style={{ marginTop: 6 }}>
         <Text style={{ fontSize: 12, fontWeight: 600 }}>Property 매핑</Text>
@@ -141,7 +188,12 @@ const ClassMappingCard: React.FC<ClassMappingCardProps> = ({
                 <Space>
                   <Tag>{pm.source_field}</Tag>
                   <Text style={{ fontSize: 11 }}>→</Text>
-                  <Text code style={{ fontSize: 11 }}>{shortIRI(pm.target_property, 40)}</Text>
+                  <Text strong style={{ fontSize: 12 }}>
+                    {propLabelMap.get(pm.target_property) ?? localName(pm.target_property)}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 10 }} title={pm.target_property}>
+                    ({localName(pm.target_property)})
+                  </Text>
                 </Space>
               </List.Item>
             )}
@@ -152,6 +204,8 @@ const ClassMappingCard: React.FC<ClassMappingCardProps> = ({
           graph={graph}
           dsIri={dsIri}
           mappingIri={mapping.mapping_iri}
+          objProps={objProps}
+          dataProps={dataProps}
           onAdded={onPropAdded}
         />
       </div>
@@ -165,18 +219,37 @@ interface DatasourceDetailPanelProps {
   dataset: string
   graph: string
   dsIri: string
+  classes: ClassSummary[]
+  objProps: ObjPropSummary[]
+  dataProps: DataPropSummary[]
 }
 
 const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
-  dataset, graph, dsIri,
+  dataset, graph, dsIri, classes, objProps, dataProps,
 }) => {
   const [detail, setDetail] = useState<DatasourceDetail | null>(null)
   const [mappingForm] = Form.useForm()
   const [addingMapping, setAddingMapping] = useState(false)
 
-  // 미리보기
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewData, setPreviewData] = useState<{ rows: unknown[]; error: string | null } | null>(null)
+
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+
+  // iri → label 맵
+  const classMap = useMemo(() => new Map(classes.map((c) => [c.iri, c.label ?? localName(c.iri)])), [classes])
+  const propLabelMap = useMemo(() => {
+    const m = new Map<string, string>()
+    objProps.forEach((p) => m.set(p.iri, p.label ?? localName(p.iri)))
+    dataProps.forEach((p) => m.set(p.iri, p.label ?? localName(p.iri)))
+    return m
+  }, [objProps, dataProps])
+
+  const classOptions = useMemo(() =>
+    classes.map((c) => ({ label: c.label ?? localName(c.iri), value: c.iri, title: c.iri })),
+    [classes],
+  )
 
   const handlePreview = async () => {
     setPreviewLoading(true)
@@ -188,6 +261,24 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
       message.error((e as Error).message)
     } finally {
       setPreviewLoading(false)
+    }
+  }
+
+  const handleImport = async () => {
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const res = await importDatasource(dataset, graph, dsIri)
+      setImportResult(res)
+      if (res.errors.length === 0) {
+        message.success(`Import 완료: ${res.imported_individuals}개 Individual, ${res.inserted_triples}개 트리플`)
+      } else {
+        message.warning(`Import 완료 (오류 ${res.errors.length}건)`)
+      }
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -210,6 +301,8 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
         target_class: vals.target_class,
         identifier_field: vals.identifier_field,
         label: vals.label,
+        label_field: vals.label_field || undefined,
+        comment_field: vals.comment_field || undefined,
       })
       message.success('ClassMapping 추가됨')
       mappingForm.resetFields()
@@ -235,15 +328,19 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
         )}
       </Descriptions>
 
-      {/* 미리보기 */}
+      {/* 미리보기 + Import */}
       <Space style={{ marginBottom: 8 }}>
+        <Button size="small" icon={<EyeOutlined />} loading={previewLoading} onClick={handlePreview}>
+          미리보기
+        </Button>
         <Button
           size="small"
-          icon={<EyeOutlined />}
-          loading={previewLoading}
-          onClick={handlePreview}
+          type="primary"
+          icon={<ImportOutlined />}
+          loading={importing}
+          onClick={handleImport}
         >
-          미리보기
+          Import 실행
         </Button>
       </Space>
       {previewData && (
@@ -262,6 +359,31 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
           />
         )
       )}
+      {importResult && (
+        <Alert
+          type={importResult.errors.length === 0 ? 'success' : 'warning'}
+          message={
+            <Space>
+              <Text strong>Import 결과</Text>
+              <Tag color="blue">{importResult.imported_individuals}개 Individual</Tag>
+              <Tag color="green">{importResult.inserted_triples}개 트리플</Tag>
+              {importResult.skipped_rows > 0 && (
+                <Tag color="orange">{importResult.skipped_rows}행 스킵</Tag>
+              )}
+            </Space>
+          }
+          description={
+            importResult.errors.length > 0 ? (
+              <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11 }}>
+                {importResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            ) : null
+          }
+          style={{ marginBottom: 8 }}
+          closable
+          onClose={() => setImportResult(null)}
+        />
+      )}
 
       <Text strong style={{ display: 'block', marginBottom: 4 }}>Class 매핑</Text>
 
@@ -275,6 +397,10 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
             dataset={dataset}
             graph={graph}
             dsIri={dsIri}
+            classMap={classMap}
+            propLabelMap={propLabelMap}
+            objProps={objProps}
+            dataProps={dataProps}
             onDeleted={reload}
             onPropAdded={reload}
           />
@@ -283,25 +409,45 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
 
       {/* ClassMapping 추가 폼 */}
       <Card size="small" title="ClassMapping 추가" style={{ marginTop: 8 }}>
-        <Form form={mappingForm} layout="inline">
-          <Form.Item name="target_class" rules={[{ required: true }]}>
-            <Input placeholder="타겟 Class IRI" style={{ width: 220 }} />
-          </Form.Item>
-          <Form.Item name="identifier_field" rules={[{ required: true }]}>
-            <Input placeholder="ID 필드명" style={{ width: 130 }} />
-          </Form.Item>
-          <Form.Item name="label">
-            <Input placeholder="Label (선택)" style={{ width: 110 }} />
-          </Form.Item>
-          <Form.Item>
-            <Button
-              size="small"
-              type="primary"
-              loading={addingMapping}
-              onClick={handleAddMapping}
-              icon={<PlusOutlined />}
+        <Form form={mappingForm} layout="vertical">
+          <Space wrap>
+            <Form.Item name="target_class" label="타겟 Class" rules={[{ required: true }]} style={{ marginBottom: 8 }}>
+              <Select
+                placeholder="Class 선택"
+                style={{ width: 200 }}
+                options={classOptions}
+                showSearch
+                optionFilterProp="label"
+                allowClear
+              />
+            </Form.Item>
+            <Form.Item name="identifier_field" label="식별자 필드 (PK)" rules={[{ required: true }]} style={{ marginBottom: 8 }}>
+              <Input placeholder="예: isbn, id" style={{ width: 150 }} />
+            </Form.Item>
+            <Form.Item
+              name="label_field"
+              label={<span>Label 필드 <Text type="secondary" style={{ fontSize: 11 }}>→ rdfs:label</Text></span>}
+              style={{ marginBottom: 8 }}
             >
-              추가
+              <Input placeholder="예: title, name" style={{ width: 150 }} />
+            </Form.Item>
+            <Form.Item
+              name="comment_field"
+              label={<span>Comment 필드 <Text type="secondary" style={{ fontSize: 11 }}>→ rdfs:comment</Text></span>}
+              style={{ marginBottom: 8 }}
+            >
+              <Input placeholder="예: description" style={{ width: 150 }} />
+            </Form.Item>
+            <Form.Item name="label" label="매핑 이름 (선택)" style={{ marginBottom: 8 }}>
+              <Input placeholder="이 매핑의 이름" style={{ width: 130 }} />
+            </Form.Item>
+          </Space>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button
+              size="small" type="primary" loading={addingMapping}
+              onClick={handleAddMapping} icon={<PlusOutlined />}
+            >
+              ClassMapping 추가
             </Button>
           </Form.Item>
         </Form>
@@ -313,12 +459,35 @@ const DatasourceDetailPanel: React.FC<DatasourceDetailPanelProps> = ({
 // ── Main Panel ─────────────────────────────────────────────────────────────
 
 const DatasourcesPanel: React.FC = () => {
-  const { dataset, graph } = useOOI()
+  const { dataset, graph, graphs, namespace } = useOOI()
 
   const [datasources, setDatasources] = useState<DatasourceSummary[]>([])
   const [loading, setLoading] = useState(false)
   const [createForm] = Form.useForm()
   const [creating, setCreating] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const res = await uploadDatasourceFile(file)
+      createForm.setFieldValue('connection_info', res.path)
+      message.success(`업로드 완료: ${res.filename}`)
+    } catch (err: unknown) {
+      message.error((err as Error).message)
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  // 온톨로지 데이터 (매핑 Select용)
+  const [classes, setClasses] = useState<ClassSummary[]>([])
+  const [objProps, setObjProps] = useState<ObjPropSummary[]>([])
+  const [dataProps, setDataProps] = useState<DataPropSummary[]>([])
 
   const reload = async () => {
     if (!dataset || !graph) return
@@ -333,7 +502,22 @@ const DatasourcesPanel: React.FC = () => {
     }
   }
 
+  const loadOntology = async () => {
+    if (!dataset || graphs.length === 0 || !namespace) return
+    try {
+      const [c, op, dp] = await Promise.all([
+        listClasses(dataset, graphs, namespace),
+        listObjProps(dataset, graphs, namespace),
+        listDataProps(dataset, graphs, namespace),
+      ])
+      setClasses(c)
+      setObjProps(op)
+      setDataProps(dp)
+    } catch { /* 무시 */ }
+  }
+
   useEffect(() => { reload() }, [dataset, graph])
+  useEffect(() => { loadOntology() }, [dataset, graphs, namespace])
 
   const handleCreate = async () => {
     const vals = await createForm.validateFields()
@@ -386,16 +570,30 @@ const DatasourcesPanel: React.FC = () => {
           <Form.Item name="connection_info" rules={[{ required: true }]}>
             <Input placeholder="연결 정보 (URL/경로)" style={{ width: 200 }} />
           </Form.Item>
+          <Form.Item>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.json"
+              style={{ display: 'none' }}
+              onChange={handleFileUpload}
+            />
+            <Button
+              icon={<UploadOutlined />}
+              loading={uploading}
+              onClick={() => fileInputRef.current?.click()}
+              title="CSV/JSON 파일 업로드 후 경로 자동 입력"
+            >
+              파일 업로드
+            </Button>
+          </Form.Item>
           <Form.Item name="description">
             <Input placeholder="설명 (선택)" style={{ width: 140 }} />
           </Form.Item>
           <Form.Item>
             <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              loading={creating}
-              onClick={handleCreate}
-              disabled={!dataset || !graph}
+              type="primary" icon={<PlusOutlined />} loading={creating}
+              onClick={handleCreate} disabled={!dataset || !graph}
             >
               추가
             </Button>
@@ -427,9 +625,7 @@ const DatasourcesPanel: React.FC = () => {
                   onConfirm={() => handleDelete(ds.datasource_iri)}
                 >
                   <Button
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
+                    size="small" danger icon={<DeleteOutlined />}
                     onClick={(e) => e.stopPropagation()}
                   >
                     삭제
@@ -441,6 +637,9 @@ const DatasourcesPanel: React.FC = () => {
                 dataset={dataset!}
                 graph={graph!}
                 dsIri={ds.datasource_iri}
+                classes={classes}
+                objProps={objProps}
+                dataProps={dataProps}
               />
             </Panel>
           ))}

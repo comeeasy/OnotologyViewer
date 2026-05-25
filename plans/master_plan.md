@@ -1,8 +1,8 @@
 # OntologyViewer — Master Plan
 
-**Date:** 2026-05-25 (updated)  
+**Date:** 2026-05-26 (updated)  
 **Source:** `raw/spec.md`, `wiki/queries/ontology-viewer-spec.md`, `plans/plan_v01.md`  
-**Status:** v01 ✅ | v02 ✅ | v03 ✅ | v04 🚧 (진행 중)
+**Status:** v01 ✅ | v02 ✅ | v03 ✅ | v04 🚧 (진행 중) | v05 ⬜ (예정)
 
 ---
 
@@ -831,7 +831,7 @@ v01 Backend  →  v01 Frontend  →  v02 Backend  →  v02 Frontend  →  v03
 |----|------|------|
 | v03-A | SHACL 검증 룰 관리 + 검증 | ✅ |
 | v03-B | SPARQL 기반 추론 Rule | ✅ |
-| v03-C | Datasource 매핑 + 미리보기 | ✅ |
+| v03-C | Datasource 매핑 정의 저장 + 미리보기 | ✅ |
 | v03-D | Universal Namespace import UI | ✅ |
 
 ---
@@ -869,6 +869,61 @@ v01 Backend  →  v01 Frontend  →  v02 Backend  →  v02 Frontend  →  v03
 ```
 backend/services/
 └── reasoning_engine.py   ← 신규: OntologyReasoningEngine
+```
+
+---
+
+---
+
+## v05 — Datasource Import Engine
+
+> 상세: `plans/plan_v05.md`
+
+### 목표
+
+v03-C에서 구현한 매핑 정의를 바탕으로 **실제 데이터 → RDF 트리플 변환(Import)** 실행 기능 구현.
+
+### 지원 소스 유형
+
+| 타입 | 설명 | 상태 |
+|------|------|------|
+| CSV | 로컬 파일 or URL | ⬜ |
+| JSON | 로컬 파일 or URL + JSONPath | ⬜ |
+| REST API | HTTP GET + 페이지네이션 + 인증 | ⬜ |
+| RDB | SQLite / PostgreSQL / MySQL (SQLAlchemy) | ⬜ |
+
+### 개발 원칙
+
+- 매 Step마다 **실제 데이터 기반 시나리오 10개** 먼저 작성
+- pytest 테스트 코드 구현 → 통과 확인 → 다음 Step 구현
+- 각 Importer는 `AbstractImporter` 인터페이스 구현
+
+### v05 구현 단계
+
+| ID | 기능 | 상태 |
+|----|------|------|
+| v05-1 | CSV Importer + 테스트 10개 | ⬜ |
+| v05-2 | JSON Importer + JSONPath + 테스트 10개 | ⬜ |
+| v05-3 | REST API Importer + 페이지네이션/인증 + 테스트 10개 | ⬜ |
+| v05-4 | RDB Importer (SQLAlchemy) + 테스트 10개 | ⬜ |
+| v05-5 | Frontend Import UI (버튼 + 결과 리포트) | ⬜ |
+| v05-6 | connection_info 스키마 구조화 + 타입별 입력 폼 | ⬜ |
+
+### IRI 생성 규칙
+
+```
+targetClass: http://library.org/onto#Book
+pk_value:    978-89-6848-101-8
+→ individual_iri = http://library.org/onto#Book_978-89-6848-101-8
+```
+
+### 새 의존성
+
+```
+jsonpath-ng>=1.6.0    # JSONPath
+sqlalchemy>=2.0.0     # RDB 어댑터
+psycopg2-binary       # PostgreSQL
+pymysql               # MySQL
 ```
 
 ---
