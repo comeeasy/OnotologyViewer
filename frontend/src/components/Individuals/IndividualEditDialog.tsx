@@ -3,7 +3,7 @@ import {
   Button, Divider, Form, Input, Modal, Select, Space, Tag, Typography,
 } from 'antd'
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
-import { XSD_SHORTTYPES } from '../../types/ontology'
+import { XSD_SHORTTYPES, xsdShortname } from '../../types/ontology'
 import type {
   DataPropSummary, IndividualDetail, IndividualSummary, ObjPropSummary,
 } from '../../types/ontology'
@@ -108,17 +108,26 @@ const IndividualEditDialog: React.FC<Props> = ({
 
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
 
-  const dpOptions = dataProps.map((p) => ({
-    label: p.label ?? shortIRI(p.iri), value: p.iri, title: p.iri,
-  }))
-  const opOptions = objProps.map((p) => ({
-    label: p.label ?? shortIRI(p.iri), value: p.iri, title: p.iri,
-  }))
-  const indOptions = individuals
-    .filter((i) => i.iri !== detail?.iri)
-    .map((i) => ({
-      label: i.label ?? shortIRI(i.iri), value: i.iri, title: i.iri,
-    }))
+  const classIri = detail?.class_iri
+
+  /** 이 Individual의 Class를 domain으로 갖는 DataProp만 (domain 없으면 포함) */
+  const dpOptions = dataProps
+    .filter((p) => !p.domain || p.domain === classIri)
+    .map((p) => ({ label: p.label ?? shortIRI(p.iri), value: p.iri, title: p.iri }))
+
+  /** 이 Individual의 Class를 domain으로 갖는 ObjProp만 (domain 없으면 포함) */
+  const opOptions = objProps
+    .filter((p) => !p.domain || p.domain === classIri)
+    .map((p) => ({ label: p.label ?? shortIRI(p.iri), value: p.iri, title: p.iri }))
+
+  /** 선택된 Property의 range 클래스에 속한 Individual만 반환 */
+  const getIndOptions = (propIri: string) => {
+    const range = objProps.find((p) => p.iri === propIri)?.range
+    return individuals
+      .filter((i) => i.iri !== detail?.iri)
+      .filter((i) => !range || i.class_iri === range)
+      .map((i) => ({ label: i.label ?? shortIRI(i.iri), value: i.iri, title: i.iri }))
+  }
 
   return (
     <Modal
@@ -152,7 +161,14 @@ const IndividualEditDialog: React.FC<Props> = ({
               placeholder="Property"
               options={dpOptions}
               value={row.property_iri || undefined}
-              onChange={(v) => setDpUpdates((r) => r.map((x, j) => j === i ? { ...x, property_iri: v } : x))}
+              onChange={(v) => {
+                const range = dataProps.find((p) => p.iri === v)?.range
+                const datatype = range
+                  ? (XSD_SHORTTYPES.includes(xsdShortname(range) as typeof XSD_SHORTTYPES[number])
+                      ? xsdShortname(range) : 'string')
+                  : 'string'
+                setDpUpdates((r) => r.map((x, j) => j === i ? { ...x, property_iri: v, datatype } : x))
+              }}
               showSearch
             />
             <Input
@@ -219,7 +235,7 @@ const IndividualEditDialog: React.FC<Props> = ({
               <Select
                 style={{ width: 190 }}
                 placeholder="대상 Individual"
-                options={indOptions}
+                options={getIndOptions(row.property_iri)}
                 value={row.target_iri || undefined}
                 onChange={(v) => setOpAdd((r) => r.map((x, j) => j === i ? { ...x, target_iri: v } : x))}
                 showSearch

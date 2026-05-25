@@ -261,6 +261,9 @@ const IndividualTable: React.FC = () => {
         dataset={dataset ?? ''}
         graph={graph ?? ''}
         namespaces={namespace ? [namespace] : []}
+        allClasses={classes}
+        allDataProps={dataProps}
+        allObjProps={objProps}
         onClose={() => setDrawerOpen(false)}
         onRefresh={loadRows}
       />

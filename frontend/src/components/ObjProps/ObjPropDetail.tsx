@@ -16,16 +16,18 @@ interface Props {
   allProps: ObjPropSummary[]      // 같은 graph의 전체 ObjProp 목록 (역관계 선택용)
   onClose: () => void
   onRefresh: () => void           // inverseOf 추가/삭제 후 부모에게 reload 요청
+  onPropSelect?: (iri: string) => void  // 다른 ObjProp 상세로 이동
 }
 
 const ObjPropDetail: React.FC<Props> = ({
-  open, detail, loading, allProps, onClose, onRefresh,
+  open, detail, loading, allProps, onClose, onRefresh, onPropSelect,
 }) => {
   const { dataset, graph } = useOOI()
   const [selInv, setSelInv] = useState<string | undefined>(undefined)
   const [addingInv, setAddingInv] = useState(false)
 
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
+  const propLabel = (iri: string) => allProps.find((p) => p.iri === iri)?.label ?? shortIRI(iri)
 
   const handleAddInverse = async () => {
     if (!dataset || !graph || !detail || !selInv) return
@@ -92,21 +94,34 @@ const ObjPropDetail: React.FC<Props> = ({
               {(detail.inverse_of ?? []).length === 0
                 ? <Text type="secondary" style={{ fontSize: 12 }}>설정된 역관계 없음</Text>
                 : (detail.inverse_of ?? []).map((iri) => (
-                    <Popconfirm
-                      key={iri}
-                      title="이 inverseOf 관계를 삭제합니까?"
-                      onConfirm={() => handleRemoveInverse(iri)}
-                      okText="삭제" okButtonProps={{ danger: true }}
-                    >
-                      <Tag
-                        icon={<MinusCircleOutlined />}
-                        color="purple"
-                        style={{ cursor: 'pointer', marginBottom: 4 }}
-                        title={iri}
+                    <Space key={iri} size={2} style={{ marginBottom: 4, display: 'inline-flex' }}>
+                      {/* 레이블 클릭 → 해당 Property 상세로 이동 */}
+                      {onPropSelect && (
+                        <Tag
+                          color="purple"
+                          style={{ cursor: 'pointer', marginRight: 0 }}
+                          title={`클릭하여 상세 보기: ${iri}`}
+                          onClick={() => onPropSelect(iri)}
+                        >
+                          {propLabel(iri)}
+                        </Tag>
+                      )}
+                      {/* 삭제 버튼 */}
+                      <Popconfirm
+                        title="이 inverseOf 관계를 삭제합니까?"
+                        onConfirm={() => handleRemoveInverse(iri)}
+                        okText="삭제" okButtonProps={{ danger: true }}
                       >
-                        {shortIRI(iri)}
-                      </Tag>
-                    </Popconfirm>
+                        <Tag
+                          icon={<MinusCircleOutlined />}
+                          color={onPropSelect ? undefined : 'purple'}
+                          style={{ cursor: 'pointer', marginBottom: 0 }}
+                          title={onPropSelect ? '클릭하여 관계 삭제' : iri}
+                        >
+                          {onPropSelect ? '삭제' : propLabel(iri)}
+                        </Tag>
+                      </Popconfirm>
+                    </Space>
                   ))
               }
             </div>

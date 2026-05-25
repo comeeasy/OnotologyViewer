@@ -8,11 +8,13 @@ import {
   CheckCircleOutlined, CloseCircleOutlined,
   SafetyCertificateOutlined, SwapOutlined,
 } from '@ant-design/icons'
-import type { IndividualDetail as IIndividualDetail } from '../../types/ontology'
+import type { ClassSummary, ClassDetail as IClassDetail, DataPropSummary, IndividualDetail as IIndividualDetail, ObjPropSummary } from '../../types/ontology'
 import { getIndividual } from '../../api/individuals'
+import { getClass } from '../../api/classes'
 import { validateIndividual } from '../../api/shacl'
 import type { ViolationItem } from '../../api/shacl'
 import ClassMigrateModal from './ClassMigrateModal'
+import ClassDetailDrawer from '../Classes/ClassDetail'
 
 const { Text } = Typography
 
@@ -23,14 +25,21 @@ interface Props {
   dataset: string
   graph: string
   namespaces: string[]
+  allClasses?: ClassSummary[]         // 클래스 label 조회용
+  allDataProps?: DataPropSummary[]    // Data Property label 조회용
+  allObjProps?: ObjPropSummary[]      // Object Property label 조회용
   onClose: () => void
   onRefresh?: () => void
 }
 
 const IndividualDetail: React.FC<Props> = ({
-  open, detail: initialDetail, loading, dataset, graph, namespaces, onClose, onRefresh,
+  open, detail: initialDetail, loading, dataset, graph, namespaces,
+  allClasses = [], allDataProps = [], allObjProps = [], onClose, onRefresh,
 }) => {
   const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
+  const classLabel = (iri: string) => allClasses.find((c) => c.iri === iri)?.label ?? shortIRI(iri)
+  const dpLabel = (iri: string) => allDataProps.find((p) => p.iri === iri)?.label ?? shortIRI(iri)
+  const opLabel = (iri: string) => allObjProps.find((p) => p.iri === iri)?.label ?? shortIRI(iri)
 
   // ── 내부 네비게이션 ──────────────────────────────────
   const [navHistory, setNavHistory] = useState<IIndividualDetail[]>([])
@@ -67,6 +76,25 @@ const IndividualDetail: React.FC<Props> = ({
   }
 
   const [migrateOpen, setMigrateOpen] = useState(false)
+
+  // ── 내부 Class 상세 드로어 ─────────────────────────────────────────────
+  const [classDrawerOpen, setClassDrawerOpen]   = useState(false)
+  const [classDetail, setClassDetail]           = useState<IClassDetail | null>(null)
+  const [classDetailLoading, setClassDetailLoading] = useState(false)
+
+  const handleClassClick = async (classIri: string) => {
+    if (!dataset || !graph) return
+    setClassDrawerOpen(true)
+    setClassDetailLoading(true)
+    setClassDetail(null)
+    try {
+      setClassDetail(await getClass(dataset, graph, classIri))
+    } catch (e: unknown) {
+      message.error((e as Error).message)
+    } finally {
+      setClassDetailLoading(false)
+    }
+  }
 
   // SHACL 검증
   const [shaclLoading, setShaclLoading] = useState(false)
@@ -122,6 +150,7 @@ const IndividualDetail: React.FC<Props> = ({
   )
 
   return (
+    <>
     <Drawer title={drawerTitle} width={520} open={open} onClose={handleClose}>
       {isLoading && <Spin />}
       {!isLoading && detail && (
@@ -131,7 +160,13 @@ const IndividualDetail: React.FC<Props> = ({
             <Descriptions.Item label="Comment">{detail.comment ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="Class">
               <Space>
-                <span title={detail.class_iri}>{shortIRI(detail.class_iri)}</span>
+                <a
+                  title={detail.class_iri}
+                  onClick={() => handleClassClick(detail.class_iri)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {classLabel(detail.class_iri)}
+                </a>
                 <Button
                   size="small"
                   type="link"
@@ -164,7 +199,7 @@ const IndividualDetail: React.FC<Props> = ({
                     dataIndex: 'property',
                     width: '40%',
                     ellipsis: true,
-                    render: (v: string) => <span title={v}>{shortIRI(v)}</span>,
+                    render: (v: string) => <span title={v}>{dpLabel(v)}</span>,
                   },
                   {
                     title: 'Value',
@@ -199,7 +234,7 @@ const IndividualDetail: React.FC<Props> = ({
                   dataIndex: 'property',
                   width: '40%',
                   ellipsis: true,
-                  render: (v: string) => <span title={v}>{shortIRI(v)}</span>,
+                  render: (v: string) => <span title={v}>{opLabel(v)}</span>,
                 },
                 {
                   title: 'Value (Individual)',
@@ -249,7 +284,7 @@ const IndividualDetail: React.FC<Props> = ({
                   title: 'Property',
                   dataIndex: 'property',
                   ellipsis: true,
-                  render: (v: string) => <span title={v}>{shortIRI(v)}</span>,
+                  render: (v: string) => <span title={v}>{opLabel(v)}</span>,
                 },
               ]}
             />
@@ -323,6 +358,17 @@ const IndividualDetail: React.FC<Props> = ({
         </Space>
       )}
     </Drawer>
+
+    {/* ── 내부 Class 상세 드로어 (개별 클래스 클릭 시) ─────────────────── */}
+    <ClassDetailDrawer
+      open={classDrawerOpen}
+      detail={classDetail}
+      loading={classDetailLoading}
+      allClasses={allClasses}
+      onClose={() => setClassDrawerOpen(false)}
+      onRefresh={() => {}}
+    />
+    </>
   )
 }
 

@@ -99,13 +99,15 @@ const ObjPropTable: React.FC = () => {
     }
   }
 
-  const openDetail = async (row: ObjPropSummary) => {
+  const openDetail = async (row: ObjPropSummary) => openDetailByIri(row.iri)
+
+  const openDetailByIri = async (iri: string) => {
     if (!dataset || !graph) return
     setDrawerDetail(null)
     setDrawerOpen(true)
     setDrawerLoading(true)
     try {
-      setDrawerDetail(await getObjProp(dataset, graph, row.iri))
+      setDrawerDetail(await getObjProp(dataset, graph, iri))
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
@@ -196,6 +198,7 @@ const ObjPropTable: React.FC = () => {
         allProps={rows}
         onClose={() => setDrawerOpen(false)}
         onRefresh={refreshDetail}
+        onPropSelect={openDetailByIri}
       />
     </>
   )
