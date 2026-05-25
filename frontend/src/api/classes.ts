@@ -1,17 +1,20 @@
 import { apiFetch, encodeIRI } from './client'
 import type { ClassSummary, ClassDetail } from '../types/ontology'
 
-function buildNsParams(ds: string, graph: string, ns: string | string[]): URLSearchParams {
-  const p = new URLSearchParams({ dataset: ds, graph })
+/** dataset + 복수 그래프 + 복수 namespace 를 URLSearchParams로 빌드 */
+function buildParams(ds: string, graphs: string | string[], ns: string | string[]): URLSearchParams {
+  const p = new URLSearchParams({ dataset: ds })
+  const graphList = Array.isArray(graphs) ? graphs : [graphs]
+  graphList.forEach((g) => p.append('graph', g))
   const nsList = Array.isArray(ns) ? ns : [ns]
   nsList.forEach((n) => p.append('namespace', n))
   return p
 }
 
 export const listClasses = async (
-  ds: string, graph: string, ns: string | string[],
+  ds: string, graphs: string | string[], ns: string | string[],
 ): Promise<ClassSummary[]> => {
-  const p = buildNsParams(ds, graph, ns)
+  const p = buildParams(ds, graphs, ns)
   const res = await apiFetch<{ classes: ClassSummary[] }>('GET', `/api/tbox/classes?${p}`)
   return res.classes
 }

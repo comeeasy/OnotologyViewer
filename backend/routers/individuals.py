@@ -23,9 +23,10 @@ router = APIRouter(prefix="/api/abox/individuals", tags=["individuals"])
 # ────────────────────────────────────────────────
 
 class IndividualSummary(BaseModel):
-    iri:       str
-    label:     str | None
-    class_iri: str
+    source_graph: str | None = None  # 복수 그래프 지원: 출처 그래프 IRI
+    iri:          str
+    label:        str | None
+    class_iri:    str
 
 
 class IndividualsResponse(BaseModel):
@@ -138,19 +139,22 @@ class MigratePreviewResponse(BaseModel):
 @router.get("", response_model=IndividualsResponse)
 def get_individuals(
     dataset:   str       = Query(...),
-    graph:     str       = Query(...),
+    graph:     list[str] = Query(..., description="Named Graph IRI (복수 허용)"),
     namespace: list[str] = Query(...),
     class_iri: str | None = Query(None, description="Class IRI 필터 (optional)"),
 ):
+    graphs  = [g for g in graph if g.strip()]
     ns_list = [ns for ns in namespace if ns.strip()]
+    if not graphs:
+        raise HTTPException(422, "graph는 하나 이상 유효한 값을 제공해야 합니다.")
     if not ns_list:
         raise HTTPException(422, "namespace는 하나 이상 유효한 값을 제공해야 합니다.")
     try:
-        inds = list_individuals(dataset, graph, ns_list, class_iri)
+        inds = list_individuals(dataset, graphs, ns_list, class_iri)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return IndividualsResponse(
-        dataset=dataset, graph=graph, namespace=ns_list[0],
+        dataset=dataset, graph=graphs[0], namespace=ns_list[0],
         individuals=[IndividualSummary(**i) for i in inds],
     )
 

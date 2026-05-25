@@ -9,11 +9,12 @@ import {
   UploadOutlined,
 } from '@ant-design/icons'
 import {
-  checkHealth, createDataset, createGraph, deleteDataset, deleteGraph,
-  getGraphDetail, patchGraph, getDatasets, getGraphs, getNamespacesInGraph,
+  checkHealth, createDataset, deleteDataset, getDatasets,
+  createGraph, deleteGraph, getGraphDetail, patchGraph,
+  listGraphsWithDetail, getNamespacesInGraph,
   declareNamespace, listUniversalNamespaces, importUniversalNs, uploadTTL,
 } from '../../api/navigator'
-import type { GraphDetail, UniversalNsItem, UploadTTLResponse } from '../../api/navigator'
+import type { GraphDetail, GraphListItem, UniversalNsItem, UploadTTLResponse } from '../../api/navigator'
 import { useOOI } from '../../context/OOIContext'
 import type { Dataset, Namespace } from '../../types/ontology'
 import FusekiConfigModal from './FusekiConfigModal'
@@ -24,16 +25,19 @@ const { Text } = Typography
 type HealthStatus = 'checking' | 'ok' | 'error'
 
 const OOINavigator: React.FC = () => {
-  const { dataset, graph, namespace, setOOI, clear } = useOOI()
+  const { dataset, graph, graphs, namespace, setOOI, clear } = useOOI()
 
   const [health, setHealth] = useState<HealthStatus>('checking')
   const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [graphs, setGraphs] = useState<string[]>([])
   const [namespaces, setNamespaces] = useState<Namespace[]>([])
 
   const [selDataset, setSelDataset] = useState<string | null>(null)
-  const [selGraph, setSelGraph] = useState<string | null>(null)
+  const [selGraphs, setSelGraphs] = useState<string[]>([])      // 복수 그래프 선택
+  const [graphListItems, setGraphListItems] = useState<GraphListItem[]>([])  // label 포함
   const [selNs, setSelNs] = useState<string[]>([])
+
+  // 하위 호환: 단일 그래프 (첫 번째 선택 또는 null)
+  const selGraph = selGraphs[0] ?? null
 
   // Dataset 생성/삭제
   const [dsModalOpen, setDsModalOpen] = useState(false)
@@ -63,7 +67,7 @@ const OOINavigator: React.FC = () => {
     try {
       await deleteDataset(selDataset)
       message.success(`Dataset '${selDataset}'이(가) 삭제되었습니다.`)
-      setSelDataset(null); setSelGraph(null); setSelNs([])
+      setSelDataset(null); setSelGraphs([]); setSelNs([])
       const updated = await getDatasets()
       setDatasets(updated)
       if (dataset === selDataset) clear()
@@ -183,24 +187,26 @@ const OOINavigator: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── dataset 선택 시 graphs 로드 ──
+  // ── dataset 선택 시 graphs 로드 (label 포함) ──
   const loadGraphs = (ds: string) => {
-    getGraphs(ds).then(setGraphs).catch(() => setGraphs([]))
+    listGraphsWithDetail(ds)
+      .then(setGraphListItems)
+      .catch(() => setGraphListItems([]))
   }
 
   useEffect(() => {
-    if (!selDataset) { setGraphs([]); setSelGraph(null); return }
+    if (!selDataset) { setGraphListItems([]); setSelGraphs([]); return }
     loadGraphs(selDataset)
   }, [selDataset])
 
-  // ── graph 선택 시 namespaces + detail 로드 ──
+  // ── graph 선택 시 namespaces + detail 로드 (단일 선택 기준) ──
   useEffect(() => {
     if (!selDataset || !selGraph) {
       setNamespaces([]); setSelNs([]); setGraphDetail(null); return
     }
     getNamespacesInGraph(selDataset, selGraph).then(setNamespaces).catch(() => setNamespaces([]))
     getGraphDetail(selDataset, selGraph).then(setGraphDetail).catch(() => setGraphDetail(null))
-    setSelNs([])  // graph 변경 시 namespace 선택 초기화
+    if (selGraphs.length <= 1) setSelNs([])  // 단일 변경 시만 namespace 초기화
   }, [selDataset, selGraph])
 
   const customNamespaces = namespaces.filter((n) => n.type === 'custom')
@@ -220,7 +226,7 @@ const OOINavigator: React.FC = () => {
       setGraphModalOpen(false)
       graphForm.resetFields()
       loadGraphs(selDataset)
-      setSelGraph(iri)
+      setSelGraphs([iri])
     } catch (e: unknown) {
       if ((e as { errorFields?: unknown }).errorFields) return // form validation
       message.error((e as Error).message)
@@ -254,23 +260,22 @@ const OOINavigator: React.FC = () => {
     }
   }
 
-  // ── Graph 삭제 ──
+  // ── Graph 삭제 (단일: 첫 번째 선택 그래프 대상) ──
   const handleDeleteGraph = async () => {
     if (!selDataset || !selGraph) return
     try {
       await deleteGraph(selDataset, selGraph)
       message.success('Named Graph이 삭제되었습니다.')
-      setSelGraph(null)
+      setSelGraphs((prev) => prev.filter((g) => g !== selGraph))
       setSelNs([])
       loadGraphs(selDataset)
-      // 현재 OOI가 이 graph를 쓰고 있었다면 초기화
       if (graph === selGraph) clear()
     } catch (e: unknown) {
       message.error((e as Error).message)
     }
   }
 
-  const canApply = !!(selDataset && selGraph && selNs.length > 0)
+  const canApply = !!(selDataset && selGraphs.length > 0 && selNs.length > 0)
 
   return (
     <Space direction="vertical" style={{ width: '100%', padding: '12px 16px' }}>
@@ -318,7 +323,7 @@ const OOINavigator: React.FC = () => {
           style={{ width: '100%' }}
           placeholder="선택"
           value={selDataset}
-          onChange={(v) => { setSelDataset(v); setSelGraph(null); setSelNs([]) }}
+          onChange={(v) => { setSelDataset(v); setSelGraphs([]); setSelNs([]) }}
           options={datasets.map((d) => ({
             label: <span>{d.name} <Badge status={d.state === 'active' ? 'success' : 'default'} /></span>,
             value: d.name,
@@ -373,20 +378,26 @@ const OOINavigator: React.FC = () => {
           </Space>
         </Space>
         <Select
+          mode="multiple"
           style={{ width: '100%' }}
-          placeholder={selDataset && graphs.length === 0 ? '없음 — + 로 생성' : '선택'}
+          placeholder={selDataset && graphListItems.length === 0 ? '없음 — + 로 생성' : '선택 (복수 가능)'}
           disabled={!selDataset}
-          value={selGraph}
-          onChange={(v) => { setSelGraph(v); setSelNs([]) }}
-          options={graphs.map((g) => ({ label: shortIRI(g), value: g, title: g }))}
+          value={selGraphs}
+          onChange={(vals: string[]) => { setSelGraphs(vals); setSelNs([]) }}
+          options={graphListItems.map((g) => ({
+            label: g.label ?? shortIRI(g.graph, 28),
+            value: g.graph,
+            title: g.graph,   // tooltip으로 IRI 표시
+          }))}
+          maxTagCount={2}
+          maxTagPlaceholder={(omitted) => `+${omitted.length}개`}
         />
-        {graphDetail && (
+        {/* 단일 선택 시 상세 정보 표시 */}
+        {selGraphs.length === 1 && graphDetail && (
           <div style={{ marginTop: 4 }}>
-            {graphDetail.label && (
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                📌 {graphDetail.label}
-              </Text>
-            )}
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', wordBreak: 'break-all' }}>
+              🔗 {selGraph}
+            </Text>
             <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
               트리플 수: {graphDetail.triple_count.toLocaleString()}개
             </Text>
@@ -469,20 +480,23 @@ const OOINavigator: React.FC = () => {
       </div>
 
       <Button type="primary" block disabled={!canApply} onClick={() => {
-        if (canApply) setOOI(selDataset!, selGraph!, selNs)
+        if (canApply) setOOI(selDataset!, selGraphs, selNs)
       }}>
         OOI 설정
       </Button>
 
       {/* 현재 OOI */}
-      {dataset && graph && namespace && (
+      {dataset && graphs.length > 0 && namespace && (
         <>
           <Divider style={{ margin: '8px 0' }} />
           <Text strong style={{ fontSize: 12 }}>현재 OOI</Text>
           <Descriptions column={1} size="small" style={{ marginTop: 4 }}>
             <Descriptions.Item label="DS">{dataset}</Descriptions.Item>
             <Descriptions.Item label="Graph">
-              <span title={graph}>{shortIRI(graph)}</span>
+              {graphs.length === 1
+                ? <span title={graphs[0]}>{shortIRI(graphs[0])}</span>
+                : <span>{graphs.length}개 선택</span>
+              }
             </Descriptions.Item>
             <Descriptions.Item label="NS">
               <span title={namespace}>{shortIRI(namespace)}</span>

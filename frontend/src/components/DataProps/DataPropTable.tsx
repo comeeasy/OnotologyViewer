@@ -13,7 +13,7 @@ import DataPropDetailDrawer from './DataPropDetail'
 
 
 const DataPropTable: React.FC = () => {
-  const { dataset, graph, namespace } = useOOI()
+  const { dataset, graph, graphs, namespace } = useOOI()
 
   const [rows, setRows] = useState<DataPropSummary[]>([])
   const [classes, setClasses] = useState<ClassSummary[]>([])
@@ -29,12 +29,12 @@ const DataPropTable: React.FC = () => {
   const [drawerLoading, setDrawerLoading] = useState(false)
 
   const load = useCallback(async () => {
-    if (!dataset || !graph || !namespace) return
+    if (!dataset || graphs.length === 0 || !namespace) return
     setLoading(true)
     try {
       const [props, cls] = await Promise.all([
-        listDataProps(dataset, graph, namespace),
-        listClasses(dataset, graph, namespace),
+        listDataProps(dataset, graphs, namespace),
+        listClasses(dataset, graphs, namespace),
       ])
       setRows(props)
       setClasses(cls)
@@ -43,7 +43,7 @@ const DataPropTable: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [dataset, graph, namespace])
+  }, [dataset, graphs, namespace])
 
   useEffect(() => { load() }, [load])
 

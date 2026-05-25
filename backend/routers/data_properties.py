@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/tbox/data-properties", tags=["data-properties"])
 
 
 class DataPropertySummary(BaseModel):
+    source_graph: str | None = None
     iri:    str
     label:  str | None
     domain: str | None
@@ -64,18 +65,21 @@ class UpdateDataPropertyBody(BaseModel):
 @router.get("", response_model=DataPropertiesResponse)
 def get_data_properties(
     dataset:   str       = Query(...),
-    graph:     str       = Query(...),
+    graph:     list[str] = Query(..., description="Named Graph IRI (복수 허용)"),
     namespace: list[str] = Query(...),
 ):
+    graphs  = [g for g in graph if g.strip()]
     ns_list = [ns for ns in namespace if ns.strip()]
+    if not graphs:
+        raise HTTPException(422, "graph는 하나 이상 유효한 값을 제공해야 합니다.")
     if not ns_list:
         raise HTTPException(422, "namespace는 하나 이상 유효한 값을 제공해야 합니다.")
     try:
-        props = list_data_properties(dataset, graph, ns_list)
+        props = list_data_properties(dataset, graphs, ns_list)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return DataPropertiesResponse(
-        dataset=dataset, graph=graph, namespace=ns_list[0],
+        dataset=dataset, graph=graphs[0], namespace=ns_list[0],
         data_properties=[DataPropertySummary(**p) for p in props],
     )
 

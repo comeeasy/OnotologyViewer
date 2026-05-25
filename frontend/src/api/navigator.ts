@@ -8,6 +8,8 @@ export interface GraphDetail {
   triple_count: number
 }
 
+export type GraphListItem = GraphDetail  // alias
+
 export const checkHealth = () =>
   apiFetch<{ status: string }>('GET', '/api/health')
 
@@ -26,6 +28,10 @@ export const getGraphs = async (ds: string): Promise<string[]> => {
   const res = await apiFetch<{ graphs: string[] }>('GET', `/api/datasets/${ds}/graphs`)
   return res.graphs
 }
+
+/** 모든 Named Graph을 label·comment·triple_count 포함하여 반환 */
+export const listGraphsWithDetail = async (ds: string): Promise<GraphListItem[]> =>
+  apiFetch<GraphListItem[]>('GET', `/api/datasets/${ds}/graphs/list`)
 
 export const getGraphDetail = async (ds: string, graph: string): Promise<GraphDetail> => {
   const p = new URLSearchParams({ graph })

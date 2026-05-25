@@ -18,7 +18,7 @@ import IndividualDetailDrawer from './IndividualDetail'
 
 
 const IndividualTable: React.FC = () => {
-  const { dataset, graph, namespace } = useOOI()
+  const { dataset, graph, graphs, namespace } = useOOI()
 
   const [rows, setRows] = useState<IndividualSummary[]>([])
   const [classes, setClasses] = useState<ClassSummary[]>([])
@@ -43,30 +43,30 @@ const IndividualTable: React.FC = () => {
   const [drawerLoading, setDrawerLoading] = useState(false)
 
   const loadMeta = useCallback(async () => {
-    if (!dataset || !graph || !namespace) return
+    if (!dataset || graphs.length === 0 || !namespace) return
     try {
       const [cls, dp, op] = await Promise.all([
-        listClasses(dataset, graph, namespace),
-        listDataProps(dataset, graph, namespace),
-        listObjProps(dataset, graph, namespace),
+        listClasses(dataset, graphs, namespace),
+        listDataProps(dataset, graphs, namespace),
+        listObjProps(dataset, graphs, namespace),
       ])
       setClasses(cls)
       setDataProps(dp)
       setObjProps(op)
     } catch { /* 무시 */ }
-  }, [dataset, graph, namespace])
+  }, [dataset, graphs, namespace])
 
   const loadRows = useCallback(async () => {
-    if (!dataset || !graph || !namespace) return
+    if (!dataset || graphs.length === 0 || !namespace) return
     setLoading(true)
     try {
-      setRows(await listIndividuals(dataset, graph, namespace, classFilter))
+      setRows(await listIndividuals(dataset, graphs, namespace, classFilter))
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [dataset, graph, namespace, classFilter])
+  }, [dataset, graphs, namespace, classFilter])
 
   useEffect(() => { loadMeta(); loadRows() }, [loadMeta, loadRows])
 
@@ -93,11 +93,12 @@ const IndividualTable: React.FC = () => {
   // ── Edit ──
   const openEdit = async (row: IndividualSummary) => {
     if (!dataset || !graph) return
+    const targetGraph = row.source_graph ?? graph
     setEditDetail(null)
     setEditOpen(true)
     setEditLoading(true)
     try {
-      setEditDetail(await getIndividual(dataset, graph, row.iri))
+      setEditDetail(await getIndividual(dataset, targetGraph, row.iri))
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {

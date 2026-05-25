@@ -2,7 +2,7 @@
 
 from fuseki.sparql import query as sparql_query, update as sparql_update
 from services.iri import generate_iri
-from services.class_ import _esc, _validate_iri
+from services.class_ import _esc, _validate_iri, graph_values_clause
 
 # ────────────────────────────────────────────────
 # Characteristics 매핑
@@ -29,8 +29,9 @@ _Q_LIST = """
 PREFIX owl:  <http://www.w3.org/2002/07/owl#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?prop ?label ?domain ?range WHERE {{
-  GRAPH <{graph}> {{
+SELECT ?_g ?prop ?label ?domain ?range WHERE {{
+  {graph_values}
+  GRAPH ?_g {{
     ?prop a owl:ObjectProperty .
     OPTIONAL {{ ?prop rdfs:label  ?label }}
     OPTIONAL {{ ?prop rdfs:domain ?domain }}
@@ -185,16 +186,22 @@ def _ns_filter(namespaces: list[str]) -> str:
     return " || ".join(f'STRSTARTS(str(?prop), "{ns}")' for ns in namespaces)
 
 
-def list_object_properties(dataset: str, graph: str, namespace: str | list[str]) -> list[dict]:
-    _validate_iri(graph)
+def list_object_properties(dataset: str, graphs: str | list[str], namespace: str | list[str]) -> list[dict]:
+    graph_list = [graphs] if isinstance(graphs, str) else list(graphs)
+    for g in graph_list:
+        _validate_iri(g)
     ns_list = [namespace] if isinstance(namespace, str) else list(namespace)
     if not ns_list:
         raise ValueError("namespace는 하나 이상 제공해야 합니다.")
     for ns in ns_list:
         _validate_iri(ns)
-    rows = sparql_query(dataset, _Q_LIST.format(graph=graph, ns_filter=_ns_filter(ns_list)))
+    rows = sparql_query(dataset, _Q_LIST.format(
+        graph_values=graph_values_clause(graph_list),
+        ns_filter=_ns_filter(ns_list),
+    ))
     return [
         {
+            "source_graph": r.get("_g"),
             "iri":    r["prop"],
             "label":  r.get("label"),
             "domain": r.get("domain"),

@@ -2,9 +2,11 @@ import { apiFetch, encodeIRI } from './client'
 import type { IndividualSummary, IndividualDetail } from '../types/ontology'
 
 export const listIndividuals = async (
-  ds: string, graph: string, ns: string | string[], classIri?: string,
+  ds: string, graphs: string | string[], ns: string | string[], classIri?: string,
 ): Promise<IndividualSummary[]> => {
-  const p = new URLSearchParams({ dataset: ds, graph })
+  const p = new URLSearchParams({ dataset: ds })
+  const graphList = Array.isArray(graphs) ? graphs : [graphs]
+  graphList.forEach((g) => p.append('graph', g))
   const nsList = Array.isArray(ns) ? ns : [ns]
   nsList.forEach((n) => p.append('namespace', n))
   if (classIri) p.set('class_iri', classIri)

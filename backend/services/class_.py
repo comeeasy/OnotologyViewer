@@ -36,8 +36,9 @@ _Q_LIST = """
 PREFIX owl:  <http://www.w3.org/2002/07/owl#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?class ?label ?comment WHERE {{
-  GRAPH <{graph}> {{
+SELECT ?_g ?class ?label ?comment WHERE {{
+  {graph_values}
+  GRAPH ?_g {{
     ?class a owl:Class .
     OPTIONAL {{ ?class rdfs:label ?label }}
     OPTIONAL {{ ?class rdfs:comment ?comment }}
@@ -227,20 +228,40 @@ def _ns_filter(namespaces: list[str]) -> str:
     return " || ".join(conditions)
 
 
-def list_classes(dataset: str, graph: str, namespace: str | list[str]) -> list[dict]:
-    """OOI 범위 내 Class 목록 반환. namespace는 단일 str 또는 str 목록."""
-    _validate_iri(graph)
+def graph_values_clause(graphs: list[str]) -> str:
+    """여러 Named Graph를 위한 SPARQL VALUES 절 생성.
+
+    Returns:
+        'VALUES ?_g { <g1> <g2> ... }' — 단일 그래프도 같은 형식 사용
+    """
+    vals = " ".join(f"<{g}>" for g in graphs)
+    return f"VALUES ?_g {{ {vals} }}"
+
+
+def list_classes(dataset: str, graphs: str | list[str], namespace: str | list[str]) -> list[dict]:
+    """OOI 범위 내 Class 목록 반환.
+
+    graphs: Named Graph IRI 하나 또는 목록 (복수 그래프 지원)
+    namespace: Namespace base IRI 하나 또는 목록
+    """
+    graph_list = [graphs] if isinstance(graphs, str) else list(graphs)
+    for g in graph_list:
+        _validate_iri(g)
     ns_list = [namespace] if isinstance(namespace, str) else list(namespace)
     if not ns_list:
         raise ValueError("namespace는 하나 이상 제공해야 합니다.")
     for ns in ns_list:
         _validate_iri(ns)
-    rows = sparql_query(dataset, _Q_LIST.format(graph=graph, ns_filter=_ns_filter(ns_list)))
+    rows = sparql_query(dataset, _Q_LIST.format(
+        graph_values=graph_values_clause(graph_list),
+        ns_filter=_ns_filter(ns_list),
+    ))
     return [
         {
-            "iri":     r["class"],
-            "label":   r.get("label"),
-            "comment": r.get("comment"),
+            "source_graph": r.get("_g"),
+            "iri":          r["class"],
+            "label":        r.get("label"),
+            "comment":      r.get("comment"),
         }
         for r in rows
     ]

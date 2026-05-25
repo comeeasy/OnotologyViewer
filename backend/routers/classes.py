@@ -23,9 +23,10 @@ router = APIRouter(prefix="/api/tbox/classes", tags=["classes"])
 # ────────────────────────────────────────────────
 
 class ClassSummary(BaseModel):
-    iri:     str
-    label:   str | None
-    comment: str | None
+    source_graph: str | None = None  # 복수 그래프 지원: 출처 그래프 IRI
+    iri:          str
+    label:        str | None
+    comment:      str | None
 
 
 class ClassesResponse(BaseModel):
@@ -90,21 +91,23 @@ class AddSuperClassBody(BaseModel):
 @router.get("", response_model=ClassesResponse)
 def get_classes(
     dataset:   str       = Query(..., description="Fuseki dataset 명"),
-    graph:     str       = Query(..., description="Named Graph IRI"),
+    graph:     list[str] = Query(..., description="Named Graph IRI (복수 허용)"),
     namespace: list[str] = Query(..., description="Namespace base IRI (복수 허용)"),
 ):
-    """OOI 범위 내 모든 Class 목록을 반환한다."""
-    # 빈 문자열 필터링
+    """OOI 범위 내 모든 Class 목록을 반환한다 (복수 그래프 지원)."""
+    graphs  = [g for g in graph if g.strip()]
     ns_list = [ns for ns in namespace if ns.strip()]
+    if not graphs:
+        raise HTTPException(422, "graph는 하나 이상 유효한 값을 제공해야 합니다.")
     if not ns_list:
         raise HTTPException(422, "namespace는 하나 이상 유효한 값을 제공해야 합니다.")
     try:
-        classes = list_classes(dataset, graph, ns_list)
+        classes = list_classes(dataset, graphs, ns_list)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return ClassesResponse(
         dataset=dataset,
-        graph=graph,
+        graph=graphs[0],        # 하위호환: 첫 번째 그래프
         namespace=ns_list[0],   # 하위호환: 첫 번째 namespace
         classes=[ClassSummary(**c) for c in classes],
     )

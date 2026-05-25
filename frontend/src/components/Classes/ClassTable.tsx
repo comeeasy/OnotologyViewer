@@ -10,7 +10,7 @@ import ClassDetailDrawer from './ClassDetail'
 const { Text } = Typography
 
 const ClassTable: React.FC = () => {
-  const { dataset, graph, namespace } = useOOI()
+  const { dataset, graph, graphs, namespace } = useOOI()
 
   const [rows, setRows] = useState<ClassSummary[]>([])
   const [loading, setLoading] = useState(false)
@@ -35,16 +35,17 @@ const ClassTable: React.FC = () => {
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   const load = useCallback(async () => {
-    if (!dataset || !graph || !namespace) return
+    if (!dataset || graphs.length === 0 || !namespace) return
     setLoading(true)
     try {
-      setRows(await listClasses(dataset, graph, namespace))
+      // 복수 그래프에서 Class 목록 조회
+      setRows(await listClasses(dataset, graphs, namespace))
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [dataset, graph, namespace])
+  }, [dataset, graphs, namespace])
 
   useEffect(() => { load() }, [load])
 
@@ -85,8 +86,9 @@ const ClassTable: React.FC = () => {
   // ── Delete ──
   const handleDelete = async (row: ClassSummary) => {
     if (!dataset || !graph) return
+    const targetGraph = row.source_graph ?? graph
     try {
-      const detail = await getClass(dataset, graph, row.iri)
+      const detail = await getClass(dataset, targetGraph, row.iri)
       if (detail.individual_count > 0) {
         // Individual 처리 방법 선택 모달 표시
         setDeleteTarget(row)
@@ -120,11 +122,12 @@ const ClassTable: React.FC = () => {
   // ── Detail Drawer ──
   const openDetail = async (row: ClassSummary) => {
     if (!dataset || !graph) return
+    const targetGraph = row.source_graph ?? graph  // 출처 그래프 우선
     setDrawerDetail(null)
     setDrawerOpen(true)
     setDrawerLoading(true)
     try {
-      setDrawerDetail(await getClass(dataset, graph, row.iri))
+      setDrawerDetail(await getClass(dataset, targetGraph, row.iri))
     } catch (e: unknown) {
       message.error((e as Error).message)
     } finally {

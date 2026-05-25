@@ -13,6 +13,17 @@ router = APIRouter(prefix="/api/datasets", tags=["graphs"])
 # ── SPARQL ─────────────────────────────────────────────
 _Q_GRAPHS = "SELECT DISTINCT ?g WHERE { GRAPH ?g { } }"
 
+_Q_GRAPHS_LIST = """
+PREFIX owl:  <http://www.w3.org/2002/07/owl#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?g ?label ?comment (COUNT(?s) AS ?cnt) WHERE {
+  GRAPH ?g { ?s ?p ?o }
+  OPTIONAL { GRAPH ?g { ?g rdfs:label   ?label   } }
+  OPTIONAL { GRAPH ?g { ?g rdfs:comment ?comment } }
+}
+GROUP BY ?g ?label ?comment
+"""
+
 _Q_GRAPH_DETAIL = """
 PREFIX owl:  <http://www.w3.org/2002/07/owl#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -116,6 +127,21 @@ def get_graphs(ds: str):
     """dataset 안의 모든 Named Graph IRI 목록을 반환한다."""
     rows = sparql_query(ds, _Q_GRAPHS)
     return GraphsResponse(dataset=ds, graphs=[r["g"] for r in rows])
+
+
+@router.get("/{ds}/graphs/list", response_model=list[GraphDetail])
+def list_graphs_with_detail(ds: str):
+    """dataset 안의 모든 Named Graph을 label·comment·triple_count 포함하여 반환한다."""
+    rows = sparql_query(ds, _Q_GRAPHS_LIST)
+    return [
+        GraphDetail(
+            graph=r["g"],
+            label=r.get("label"),
+            comment=r.get("comment"),
+            triple_count=int(r.get("cnt", 0)),
+        )
+        for r in rows
+    ]
 
 
 @router.get("/{ds}/graphs/detail", response_model=GraphDetail)

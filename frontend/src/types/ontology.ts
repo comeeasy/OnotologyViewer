@@ -13,17 +13,21 @@ export interface Namespace {
 // ── OOI Context ────────────────────────────────────────
 export interface OOIState {
   dataset: string | null
+  /** 선택된 Named Graph IRI 배열 (복수 그래프 지원) */
+  graphs: string[]
+  /** 하위 호환: 첫 번째 선택 그래프 (또는 null) */
   graph: string | null
   /** 하위 호환: 첫 번째 namespace (또는 null) */
   namespace: string | null
   /** v02-I: 선택된 namespace 배열 */
   namespaces: string[]
-  setOOI: (dataset: string, graph: string, namespaces: string[]) => void
+  setOOI: (dataset: string, graphs: string[], namespaces: string[]) => void
   clear: () => void
 }
 
 // ── TBox — Class ───────────────────────────────────────
 export interface ClassSummary {
+  source_graph?: string | null  // 복수 그래프 지원: 출처 Named Graph IRI
   iri: string
   label: string | null
   comment: string | null
@@ -40,6 +44,7 @@ export interface ClassDetail extends ClassSummary {
 // ── TBox — Object Property ─────────────────────────────
 // 목록 응답: characteristics 없음 / 상세 응답: characteristics 포함
 export interface ObjPropSummary {
+  source_graph?: string | null
   iri: string
   label: string | null
   domain: string | null
@@ -65,6 +70,7 @@ export const OBJ_PROP_CHARACTERISTICS = [
 // ── TBox — Data Property ───────────────────────────────
 // 목록 응답: functional 없음 / 상세 응답: functional 포함
 export interface DataPropSummary {
+  source_graph?: string | null
   iri: string
   label: string | null
   domain: string | null
@@ -95,6 +101,7 @@ export function xsdShortname(fullIri: string): string {
 
 // ── ABox — Individual ──────────────────────────────────
 export interface IndividualSummary {
+  source_graph?: string | null
   iri: string
   label: string | null
   class_iri: string

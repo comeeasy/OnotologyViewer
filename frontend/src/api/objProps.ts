@@ -2,9 +2,11 @@ import { apiFetch, encodeIRI } from './client'
 import type { ObjPropSummary, ObjPropDetail } from '../types/ontology'
 
 export const listObjProps = async (
-  ds: string, graph: string, ns: string | string[],
+  ds: string, graphs: string | string[], ns: string | string[],
 ): Promise<ObjPropSummary[]> => {
-  const p = new URLSearchParams({ dataset: ds, graph })
+  const p = new URLSearchParams({ dataset: ds })
+  const graphList = Array.isArray(graphs) ? graphs : [graphs]
+  graphList.forEach((g) => p.append('graph', g))
   const nsList = Array.isArray(ns) ? ns : [ns]
   nsList.forEach((n) => p.append('namespace', n))
   const res = await apiFetch<{ object_properties: ObjPropSummary[] }>(

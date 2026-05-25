@@ -2,7 +2,7 @@
 
 from fuseki.sparql import query as sparql_query, query_with_types, update as sparql_update
 from services.iri import generate_iri
-from services.class_ import _esc, _validate_iri
+from services.class_ import _esc, _validate_iri, graph_values_clause
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
@@ -15,8 +15,9 @@ PREFIX owl:  <http://www.w3.org/2002/07/owl#>
 PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT DISTINCT ?ind ?label ?class WHERE {{
-  GRAPH <{graph}> {{
+SELECT DISTINCT ?_g ?ind ?label ?class WHERE {{
+  {graph_values}
+  GRAPH ?_g {{
     ?ind  a      ?class .
     ?class a     owl:Class .
     FILTER(isIRI(?ind))
@@ -148,11 +149,13 @@ def _ns_filter(namespaces: list[str]) -> str:
 
 def list_individuals(
     dataset: str,
-    graph: str,
+    graphs: str | list[str],
     namespace: str | list[str],
     class_iri: str | None = None,
 ) -> list[dict]:
-    _validate_iri(graph)
+    graph_list = [graphs] if isinstance(graphs, str) else list(graphs)
+    for g in graph_list:
+        _validate_iri(g)
     ns_list = [namespace] if isinstance(namespace, str) else list(namespace)
     if not ns_list:
         raise ValueError("namespace는 하나 이상 제공해야 합니다.")
@@ -164,10 +167,12 @@ def list_individuals(
     else:
         class_filter = ""
     rows = sparql_query(dataset, _Q_LIST.format(
-        graph=graph, ns_filter=_ns_filter(ns_list), class_filter=class_filter,
+        graph_values=graph_values_clause(graph_list),
+        ns_filter=_ns_filter(ns_list),
+        class_filter=class_filter,
     ))
     return [
-        {"iri": r["ind"], "label": r.get("label"), "class_iri": r["class"]}
+        {"source_graph": r.get("_g"), "iri": r["ind"], "label": r.get("label"), "class_iri": r["class"]}
         for r in rows
     ]
 
