@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-25 (updated)  
 **Source:** `raw/spec.md`, `wiki/queries/ontology-viewer-spec.md`, `plans/plan_v01.md`  
-**Status:** v01 ✅ | v02 ✅ | v03 ✅ (완료)
+**Status:** v01 ✅ | v02 ✅ | v03 ✅ | v04 🚧 (진행 중)
 
 ---
 
@@ -833,6 +833,43 @@ v01 Backend  →  v01 Frontend  →  v02 Backend  →  v02 Frontend  →  v03
 | v03-B | SPARQL 기반 추론 Rule | ✅ |
 | v03-C | Datasource 매핑 + 미리보기 | ✅ |
 | v03-D | Universal Namespace import UI | ✅ |
+
+---
+
+---
+
+## v04 — OntologyReasoningEngine (자동 구체화)
+
+> 상세: `plans/plan_v04.md`
+
+### 설계 원칙
+
+추론 로직을 단일 서비스(`reasoning_engine.py`)로 격리한다.
+각 서비스는 연산 후 hook을 호출하는 방식으로 연결한다.
+
+```
+[services/*]  연산 실행 → reasoning_engine.hook() 호출
+[reasoning_engine.py]  RDFS rdfs9 자동 구체화 (materialize)
+[Fuseki]  main graph (asserted) + {graph}__inferred (materialized)
+```
+
+**지원 규칙:** rdfs9 (subClassOf 계층 타입 전파) + owlrl full_materialize
+
+#### v04 Backend 🚧
+
+| ID | 기능 | 상태 |
+|----|------|------|
+| v04-A | `reasoning_engine.py` 신규 (get_ancestor_classes, materialize_individual, on_class_hierarchy_change, full_materialize) | 🚧 |
+| v04-B | `individual.py` 버그픽스 — incompatible_props Python 집합 연산 교체 | 🚧 |
+| v04-C | `individual.py` hook — migrate/create 후 materialize_individual 호출 | 🚧 |
+| v04-D | `class_.py` hook — add/removeSuperClass 후 on_class_hierarchy_change 호출 | 🚧 |
+
+#### v04 프로젝트 구조 추가
+
+```
+backend/services/
+└── reasoning_engine.py   ← 신규: OntologyReasoningEngine
+```
 
 ---
 

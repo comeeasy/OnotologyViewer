@@ -11,7 +11,7 @@ import {
 } from 'antd'
 import { previewClassMigrate, migrateIndividualClass } from '../../api/individuals'
 import { listClasses } from '../../api/classes'
-import type { ClassSummary } from '../../types/ontology'
+import type { ClassSummary, DataPropSummary, ObjPropSummary } from '../../types/ontology'
 
 const { Text } = Typography
 
@@ -22,12 +22,17 @@ interface Props {
   namespaces: string[]
   individualIri: string
   currentClassIri: string
+  allClasses?: ClassSummary[]       // label 조회용 (외부 제공)
+  allDataProps?: DataPropSummary[]  // 비호환 property label 조회용
+  allObjProps?: ObjPropSummary[]    // 비호환 property label 조회용
   onClose: () => void
   onMigrated: () => void
 }
 
 const ClassMigrateModal: React.FC<Props> = ({
-  open, dataset, graph, namespaces, individualIri, currentClassIri, onClose, onMigrated,
+  open, dataset, graph, namespaces, individualIri, currentClassIri,
+  allClasses: externalClasses = [], allDataProps = [], allObjProps = [],
+  onClose, onMigrated,
 }) => {
   const [classes, setClasses] = useState<ClassSummary[]>([])
   const [classLoading, setClassLoading] = useState(false)
@@ -38,8 +43,18 @@ const ClassMigrateModal: React.FC<Props> = ({
   const [previewing, setPreviewing] = useState(false)
   const [migrating, setMigrating] = useState(false)
 
-  const shortIRI = (iri: string, max = 40) =>
-    iri.length > max ? '…' + iri.slice(-(max - 1)) : iri
+  const shortIRI = (iri: string) => iri.split(/[#/]/).pop() ?? iri
+
+  // 외부 목록 우선, 없으면 내부 로드된 목록 사용
+  const mergedClasses = externalClasses.length > 0 ? externalClasses : classes
+  const classLabel = (iri: string) => mergedClasses.find((c) => c.iri === iri)?.label ?? shortIRI(iri)
+  const propLabel  = (iri: string) => {
+    const dp = allDataProps.find((p) => p.iri === iri)
+    if (dp) return dp.label ?? shortIRI(iri)
+    const op = allObjProps.find((p) => p.iri === iri)
+    if (op) return op.label ?? shortIRI(iri)
+    return shortIRI(iri)
+  }
 
   const loadClasses = async () => {
     if (classes.length > 0) return
@@ -94,11 +109,12 @@ const ClassMigrateModal: React.FC<Props> = ({
     onClose()
   }
 
-  const classOptions = classes
+  const classOptions = mergedClasses
     .filter((c) => c.iri !== currentClassIri)
     .map((c) => ({
       value: c.iri,
-      label: c.label ? `${c.label} (${shortIRI(c.iri, 30)})` : shortIRI(c.iri, 40),
+      label: c.label ?? shortIRI(c.iri),
+      title: c.iri,
     }))
 
   return (
@@ -133,7 +149,8 @@ const ClassMigrateModal: React.FC<Props> = ({
         <div>
           <Text type="secondary" style={{ fontSize: 11 }}>현재 Class:</Text>
           <br />
-          <Text code style={{ fontSize: 11 }}>{shortIRI(currentClassIri)}</Text>
+          <Text code style={{ fontSize: 12 }}>{classLabel(currentClassIri)}</Text>
+          <Text type="secondary" style={{ fontSize: 10, marginLeft: 6 }}>{shortIRI(currentClassIri)}</Text>
         </div>
 
         <Form layout="vertical">
@@ -163,8 +180,8 @@ const ClassMigrateModal: React.FC<Props> = ({
                     <Text type="warning">아래 property는 새 Class에 도메인이 없습니다:</Text>
                     <div style={{ marginTop: 4 }}>
                       {incompatProps.map((p) => (
-                        <Tag key={p} color="orange" style={{ marginBottom: 4, fontSize: 11 }}>
-                          {shortIRI(p, 35)}
+                        <Tag key={p} color="orange" style={{ marginBottom: 4, fontSize: 11 }} title={p}>
+                          {propLabel(p)}
                         </Tag>
                       ))}
                     </div>

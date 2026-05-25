@@ -284,6 +284,13 @@ def create_individual(
             extra_triples="\n    ".join(extra),
         ),
     )
+
+    # RDFS rdfs9 구체화: ancestor types → {graph}__inferred
+    try:
+        reasoning_engine.materialize_individual(dataset, graph, ind_iri)
+    except Exception:
+        pass  # 구체화 실패는 생성 자체를 막지 않음
+
     return ind_iri
 
 
@@ -362,24 +369,8 @@ PREFIX owl: <http://www.w3.org/2002/07/owl#>
 ASK {{ GRAPH <{graph}> {{ <{class_iri}> a owl:Class . }} }}
 """
 
-_Q_INCOMPATIBLE_PROPS = """
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-SELECT DISTINCT ?prop WHERE {{
-  GRAPH <{graph}> {{
-    <{ind_iri}> ?prop ?val .
-    FILTER(?prop NOT IN (
-      <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>,
-      <http://www.w3.org/2000/01/rdf-schema#label>,
-      <http://www.w3.org/2000/01/rdf-schema#comment>
-    ))
-    ?prop rdfs:domain <{old_class}> .
-    FILTER NOT EXISTS {{
-      ?prop rdfs:domain <{new_class}> .
-    }}
-  }}
-}}
-"""
+# _Q_INCOMPATIBLE_PROPS: 비호환 체크는 Python 집합 연산으로 교체됨
+# → reasoning_engine.get_incompatible_properties() 참조
 
 _U_CHANGE_CLASS = """
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -392,6 +383,9 @@ _U_DEL_PROP_VALUES = """
 DELETE {{ GRAPH <{graph}> {{ <{ind_iri}> <{prop_iri}> ?v }} }}
 WHERE  {{ GRAPH <{graph}> {{ <{ind_iri}> <{prop_iri}> ?v }} }}
 """
+
+
+from services import reasoning_engine  # noqa: E402 (circular-safe: 함수 범위에서 지연 import 가능하나 모듈 수준 import 사용)
 
 
 def _class_exists(dataset: str, graph: str, class_iri: str) -> bool:
@@ -410,12 +404,16 @@ def get_incompatible_properties(
     dataset: str, graph: str, ind_iri: str,
     old_class: str, new_class: str,
 ) -> list[str]:
-    """Individual이 사용하는 property 중 new_class에 도메인 없는 것들 반환."""
-    rows = sparql_query(dataset, _Q_INCOMPATIBLE_PROPS.format(
-        graph=graph, ind_iri=ind_iri,
-        old_class=old_class, new_class=new_class,
-    ))
-    return [r["prop"] for r in rows]
+    """
+    Individual이 사용하는 property 중 new_class와 비호환인 것들 반환.
+
+    기존 SPARQL FILTER NOT EXISTS 방식(named-graph 컨텍스트 버그)을
+    reasoning_engine의 Python 집합 연산으로 교체.
+    old_class 파라미터는 API 호환성을 위해 유지하나 사용하지 않음.
+    """
+    return reasoning_engine.get_incompatible_properties(
+        dataset, graph, ind_iri, new_class
+    )
 
 
 def migrate_individual_class(
@@ -464,11 +462,23 @@ def migrate_individual_class(
             ))
             deleted.append(prop)
 
+    # 기존 inferred types 초기화 (이전 계층 기반 타입 제거)
+    try:
+        reasoning_engine.clear_inferred_types(dataset, graph, ind_iri)
+    except Exception:
+        pass
+
     # rdf:type 교체
     sparql_update(dataset, _U_CHANGE_CLASS.format(
         graph=graph, ind_iri=ind_iri,
         old_class=old_class, new_class=new_class_iri,
     ))
+
+    # 새 클래스 기반 ancestor types 재구체화
+    try:
+        reasoning_engine.materialize_individual(dataset, graph, ind_iri)
+    except Exception:
+        pass
 
     return {
         "old_class_iri": old_class,

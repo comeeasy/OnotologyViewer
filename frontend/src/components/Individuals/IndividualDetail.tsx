@@ -349,6 +349,9 @@ const IndividualDetail: React.FC<Props> = ({
             namespaces={namespaces}
             individualIri={detail.iri}
             currentClassIri={detail.class_iri}
+            allClasses={allClasses}
+            allDataProps={allDataProps}
+            allObjProps={allObjProps}
             onClose={() => setMigrateOpen(false)}
             onMigrated={() => {
               setMigrateOpen(false)

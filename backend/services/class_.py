@@ -432,11 +432,14 @@ def _is_descendant(dataset: str, graph: str, candidate_desc: str, ancestor: str)
 def add_super_class(dataset: str, graph: str, child_iri: str, parent_iri: str) -> None:
     """child rdfs:subClassOf parent 트리플을 삽입한다.
 
+    계층 변경 후 child class 의 모든 직접 개인에 대해 ancestor types 를 재구체화한다.
+
     Raises:
         ValueError("not found: child"): child class 미존재
         ValueError("not found: parent"): parent class 미존재
         ValueError("circular"): 순환 참조 발생
     """
+    from services import reasoning_engine  # 순환 import 방지
     _validate_iri(graph); _validate_iri(child_iri); _validate_iri(parent_iri)
     if not _class_exists(dataset, graph, child_iri):
         raise ValueError(f"not found: child {child_iri}")
@@ -447,11 +450,28 @@ def add_super_class(dataset: str, graph: str, child_iri: str, parent_iri: str) -
         raise ValueError(f"circular: {parent_iri} is already a descendant of {child_iri}")
     sparql_update(dataset, _U_INS_SUBCLASSOF.format(graph=graph, child=child_iri, parent=parent_iri))
 
+    # RDFS rdfs9 구체화: child 개인들 inferred types 갱신
+    try:
+        reasoning_engine.on_class_hierarchy_change(dataset, graph, child_iri)
+    except Exception:
+        pass  # 구체화 실패는 계층 변경 자체를 롤백하지 않음
+
 
 def remove_super_class(dataset: str, graph: str, child_iri: str, parent_iri: str) -> None:
-    """child rdfs:subClassOf parent 트리플을 삭제한다 (멱등)."""
+    """child rdfs:subClassOf parent 트리플을 삭제한다 (멱등).
+
+    계층 변경 후 child class 의 모든 직접 개인에 대해 inferred types 를 재계산한다.
+    (제거된 parent 에서 파생된 ancestor types 가 __inferred 에서 정리됨)
+    """
+    from services import reasoning_engine  # 순환 import 방지
     _validate_iri(graph); _validate_iri(child_iri); _validate_iri(parent_iri)
     sparql_update(dataset, _U_DEL_SUBCLASSOF.format(graph=graph, child=child_iri, parent=parent_iri))
+
+    # 계층 변경 후 inferred types 재계산 (삭제된 parent 기반 타입 제거)
+    try:
+        reasoning_engine.on_class_hierarchy_change(dataset, graph, child_iri)
+    except Exception:
+        pass
 
 
 _U_MIGRATE_IND_TYPE = """
