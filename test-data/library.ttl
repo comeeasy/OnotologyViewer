@@ -1,0 +1,169 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix lib:  <http://library.org/onto#> .
+
+# ── Ontology 선언 ───────────────────────────────────────
+<http://library.org/onto>
+    a owl:Ontology ;
+    rdfs:label "Library Ontology" ;
+    rdfs:comment "도서관 온톨로지 — 통합 테스트용" .
+
+# ══════════════════════════════════════════════════════
+# TBox — Classes
+# ══════════════════════════════════════════════════════
+
+lib:Book
+    a owl:Class ;
+    rdfs:label "Book" ;
+    rdfs:comment "도서" .
+
+lib:Author
+    a owl:Class ;
+    rdfs:label "Author" ;
+    rdfs:comment "저자" .
+
+lib:Publisher
+    a owl:Class ;
+    rdfs:label "Publisher" ;
+    rdfs:comment "출판사" .
+
+lib:LibraryMember
+    a owl:Class ;
+    rdfs:label "LibraryMember" ;
+    rdfs:comment "도서관 회원" .
+
+lib:Loan
+    a owl:Class ;
+    rdfs:label "Loan" ;
+    rdfs:comment "대출" .
+
+# ══════════════════════════════════════════════════════
+# TBox — Object Properties
+# ══════════════════════════════════════════════════════
+
+lib:writtenBy
+    a owl:ObjectProperty ;
+    rdfs:label "writtenBy" ;
+    rdfs:domain lib:Book ;
+    rdfs:range  lib:Author .
+
+lib:publishedBy
+    a owl:ObjectProperty ;
+    rdfs:label "publishedBy" ;
+    rdfs:domain lib:Book ;
+    rdfs:range  lib:Publisher .
+
+lib:loanOf
+    a owl:ObjectProperty ;
+    rdfs:label "loanOf" ;
+    rdfs:domain lib:Loan ;
+    rdfs:range  lib:Book .
+
+lib:borrowedBy
+    a owl:ObjectProperty ;
+    rdfs:label "borrowedBy" ;
+    rdfs:domain lib:Loan ;
+    rdfs:range  lib:LibraryMember .
+
+# ══════════════════════════════════════════════════════
+# TBox — Data Properties
+# ══════════════════════════════════════════════════════
+
+lib:title
+    a owl:DatatypeProperty ;
+    rdfs:label "title" ;
+    rdfs:domain lib:Book ;
+    rdfs:range  xsd:string .
+
+lib:isbn
+    a owl:DatatypeProperty ;
+    rdfs:label "isbn" ;
+    rdfs:domain lib:Book ;
+    rdfs:range  xsd:string .
+
+lib:birthYear
+    a owl:DatatypeProperty ;
+    rdfs:label "birthYear" ;
+    rdfs:domain lib:Author ;
+    rdfs:range  xsd:integer .
+
+lib:memberSince
+    a owl:DatatypeProperty ;
+    rdfs:label "memberSince" ;
+    rdfs:domain lib:LibraryMember ;
+    rdfs:range  xsd:integer .
+
+lib:loanDate
+    a owl:DatatypeProperty ;
+    rdfs:label "loanDate" ;
+    rdfs:domain lib:Loan ;
+    rdfs:range  xsd:string .
+
+lib:dueDate
+    a owl:DatatypeProperty ;
+    rdfs:label "dueDate" ;
+    rdfs:domain lib:Loan ;
+    rdfs:range  xsd:string .
+
+# ══════════════════════════════════════════════════════
+# ABox — Individuals
+# ══════════════════════════════════════════════════════
+
+# ── Authors ────────────────────────────────────────────
+lib:Author_KimCheolsu
+    a lib:Author ;
+    rdfs:label "김철수" ;
+    lib:birthYear 1975 .
+
+lib:Author_LeeMina
+    a lib:Author ;
+    rdfs:label "이미나" ;
+    lib:birthYear 1982 .
+
+# ── Publishers ─────────────────────────────────────────
+lib:Publisher_HanbitMedia
+    a lib:Publisher ;
+    rdfs:label "한빛미디어" .
+
+lib:Publisher_Wikibooks
+    a lib:Publisher ;
+    rdfs:label "위키북스" .
+
+# ── Books ──────────────────────────────────────────────
+lib:Book_OWLPrimer
+    a lib:Book ;
+    rdfs:label "OWL 온톨로지 입문" ;
+    lib:title "OWL 온톨로지 입문" ;
+    lib:isbn "978-89-6848-001-1" ;
+    lib:writtenBy lib:Author_KimCheolsu ;
+    lib:publishedBy lib:Publisher_HanbitMedia .
+
+lib:Book_KnowledgeGraph
+    a lib:Book ;
+    rdfs:label "지식 그래프 기초" ;
+    lib:title "지식 그래프 기초" ;
+    lib:isbn "978-89-6848-002-2" ;
+    lib:writtenBy lib:Author_LeeMina ;
+    lib:publishedBy lib:Publisher_Wikibooks .
+
+# ── Library Members ────────────────────────────────────
+lib:Member_ParkJiyeon
+    a lib:LibraryMember ;
+    rdfs:label "박지연" ;
+    lib:memberSince 2020 .
+
+lib:Member_ChoiSungjun
+    a lib:LibraryMember ;
+    rdfs:label "최성준" ;
+    lib:memberSince 2022 .
+
+# ── Loans ──────────────────────────────────────────────
+lib:Loan_001
+    a lib:Loan ;
+    rdfs:label "Loan_001" ;
+    lib:loanOf    lib:Book_OWLPrimer ;
+    lib:borrowedBy lib:Member_ParkJiyeon ;
+    lib:loanDate  "2026-05-01" ;
+    lib:dueDate   "2026-05-15" .

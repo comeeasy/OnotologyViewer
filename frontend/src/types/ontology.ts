@@ -112,11 +112,13 @@ export interface OutgoingRelation {
   value: string
   value_type: 'iri' | 'literal'
   datatype: string | null
+  value_label: string | null  // IRI 타입일 때 대상 Individual label
 }
 
 export interface IncomingRelation {
   subject: string
   property: string
+  subject_label: string | null  // 주체 Individual label
 }
 
 export interface IndividualDetail {

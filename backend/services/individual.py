@@ -60,6 +60,16 @@ SELECT ?subj ?prop WHERE {{
 }}
 """
 
+_Q_LABELS_BATCH = """
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?iri ?label WHERE {{
+  GRAPH <{graph}> {{
+    VALUES ?iri {{ {iris} }}
+    OPTIONAL {{ ?iri rdfs:label ?label }}
+  }}
+}}
+"""
+
 _U_INSERT_BASE = """
 PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -202,6 +212,24 @@ def get_individual_detail(dataset: str, graph: str, ind_iri: str) -> dict | None
 
     in_rows = sparql_query(dataset, _Q_INCOMING.format(graph=graph, ind_iri=ind_iri))
     incoming = [{"subject": row["subj"], "property": row["prop"]} for row in in_rows]
+
+    # ── IRI 값들의 label 배치 조회 ──────────────────────────
+    iri_values  = [o["value"] for o in outgoing if o["value_type"] == "iri"]
+    iri_subjects = [i["subject"] for i in incoming]
+    all_iris = list(set(iri_values + iri_subjects))
+    label_map: dict[str, str | None] = {}
+    if all_iris:
+        iris_str = " ".join(f"<{iri}>" for iri in all_iris)
+        try:
+            lb_rows = sparql_query(dataset, _Q_LABELS_BATCH.format(graph=graph, iris=iris_str))
+            label_map = {row["iri"]: row.get("label") for row in lb_rows}
+        except Exception:
+            pass  # label 조회 실패 시 무시
+
+    for o in outgoing:
+        o["value_label"] = label_map.get(o["value"]) if o["value_type"] == "iri" else None
+    for i in incoming:
+        i["subject_label"] = label_map.get(i["subject"])
 
     return {
         "iri":       ind_iri,

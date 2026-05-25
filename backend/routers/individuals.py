@@ -37,14 +37,17 @@ class IndividualsResponse(BaseModel):
 
 
 class OutgoingRelation(BaseModel):
-    property:   str
-    value:      str
-    value_type: str   # "iri" | "literal"
+    property:    str
+    value:       str
+    value_type:  str         # "iri" | "literal"
+    datatype:    str | None = None
+    value_label: str | None = None  # IRI 타입일 때 대상 Individual의 label
 
 
 class IncomingRelation(BaseModel):
-    subject:  str
-    property: str
+    subject:       str
+    property:      str
+    subject_label: str | None = None  # 주체 Individual의 label
 
 
 class IndividualDetail(BaseModel):
