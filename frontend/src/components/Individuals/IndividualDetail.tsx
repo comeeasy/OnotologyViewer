@@ -89,6 +89,16 @@ const IndividualDetail: React.FC<Props> = ({
     }
   }
 
+  // ── 관계 분류 ──────────────────────────────────────────
+  const SKIP_DP_PROPS = new Set([
+    'http://www.w3.org/2000/01/rdf-schema#label',
+    'http://www.w3.org/2000/01/rdf-schema#comment',
+  ])
+  const dataProps = (detail?.outgoing ?? []).filter(
+    (o) => o.value_type === 'literal' && !SKIP_DP_PROPS.has(o.property),
+  )
+  const objPropsOut = (detail?.outgoing ?? []).filter((o) => o.value_type === 'iri')
+
   const isLoading = loading || navLoading
 
   const drawerTitle = (
@@ -138,49 +148,79 @@ const IndividualDetail: React.FC<Props> = ({
             </Descriptions.Item>
           </Descriptions>
 
-          {/* Outgoing 관계 */}
+          {/* Data Properties */}
+          {dataProps.length > 0 && (
+            <div>
+              <Text strong>Data Properties</Text>
+              <Table
+                size="small"
+                rowKey={(r) => r.property}
+                style={{ marginTop: 4 }}
+                pagination={false}
+                dataSource={dataProps}
+                columns={[
+                  {
+                    title: 'Property',
+                    dataIndex: 'property',
+                    width: '40%',
+                    ellipsis: true,
+                    render: (v: string) => <span title={v}>{shortIRI(v)}</span>,
+                  },
+                  {
+                    title: 'Value',
+                    dataIndex: 'value',
+                    ellipsis: true,
+                    render: (v: string, row) => (
+                      <Tag color="default" style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                        {v}{row.datatype && row.datatype !== 'string'
+                          ? <Text type="secondary" style={{ fontSize: 10 }}> ({row.datatype})</Text>
+                          : null}
+                      </Tag>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          )}
+
+          {/* Object Properties (Outgoing IRI) */}
           <div>
-            <Text strong>Outgoing 관계 (이 Individual → 대상)</Text>
+            <Text strong>Object Properties (이 Individual → 대상)</Text>
             <Table
               size="small"
               rowKey={(r) => r.property + r.value}
               style={{ marginTop: 4 }}
               pagination={false}
-              dataSource={detail.outgoing}
+              dataSource={objPropsOut}
+              locale={{ emptyText: '연결된 Object Property 없음' }}
               columns={[
                 {
                   title: 'Property',
                   dataIndex: 'property',
+                  width: '40%',
                   ellipsis: true,
                   render: (v: string) => <span title={v}>{shortIRI(v)}</span>,
                 },
                 {
-                  title: 'Value',
+                  title: 'Value (Individual)',
                   dataIndex: 'value',
                   ellipsis: true,
                   render: (v: string, row) => {
-                    if (row.value_type === 'iri') {
-                      const displayLabel = row.value_label ?? shortIRI(v)
-                      return (
-                        <a
-                          title={v}
-                          onClick={() => handleNavigate(v)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          {displayLabel}
-                        </a>
-                      )
-                    }
-                    return <Tag>{v}</Tag>
+                    const displayLabel = row.value_label ?? shortIRI(v)
+                    return (
+                      <a title={v} onClick={() => handleNavigate(v)} style={{ cursor: 'pointer' }}>
+                        {displayLabel}
+                      </a>
+                    )
                   },
                 },
               ]}
             />
           </div>
 
-          {/* Incoming 관계 */}
+          {/* Incoming Object Properties */}
           <div>
-            <Text strong>Incoming 관계 (다른 Individual → 이 Individual)</Text>
+            <Text strong>Incoming (다른 Individual → 이 Individual)</Text>
             <Table
               size="small"
               rowKey={(r) => r.subject + r.property}
